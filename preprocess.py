@@ -2,9 +2,9 @@ import pandas as pd
 import numpy as np
 
 # Đọc dữ liệu
-train = pd.read_csv('data/rossmann-store-sales/train.csv')
-test = pd.read_csv('data/rossmann-store-sales/test.csv')
-store = pd.read_csv('data/rossmann-store-sales/store.csv')
+train = pd.read_csv('data/rossmann-store-sales/train.csv', low_memory=False)
+test = pd.read_csv('data/rossmann-store-sales/test.csv', low_memory=False)
+store = pd.read_csv('data/rossmann-store-sales/store.csv', low_memory=False)
 
 # Merge store info
 train = train.merge(store, on='Store', how='left')
@@ -51,5 +51,11 @@ X = np.array(X)  # [num_samples, input_window]
 y = np.array(y)  # [num_samples, output_window]
 covariates = np.array(covariates)  # [num_samples, input_window+output_window, num_covariates]
 
-# Lưu dữ liệu
-np.savez('processed_train.npz', X=X, y=y, covariates=covariates)
+# Lưu dữ liệu và metadata
+np.savez('processed_train.npz', 
+         X=X, 
+         y=y, 
+         covariates=covariates,
+         feature_names=feature_cols,
+         input_window=input_window,
+         output_window=output_window)
