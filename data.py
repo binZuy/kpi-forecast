@@ -3,9 +3,6 @@ import torch
 from torch.utils.data import Dataset
 
 def load_processed_data(npz_path):
-    """
-    Load preprocessed data from .npz file
-    """
     data = np.load(npz_path)
     X = data['X']  # [num_samples, input_window]
     y = data['y']  # [num_samples, output_window]

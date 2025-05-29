@@ -3,6 +3,8 @@ from .Encoder import Encoder
 from .Decoder import GlobalDecoder, LocalDecoder
 from .data import MQRNN_dataset
 from torch.utils.data import DataLoader
+import numpy as np
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 def calc_loss(cur_series_covariate_tensor : torch.Tensor, 
             next_covariate_tensor: torch.Tensor,
@@ -87,3 +89,77 @@ def train_fn(encoder:Encoder,
         epoch_loss_mean = epoch_loss_sum/ total_sample
         if (i+1)%5 == 0:
             print(f"epoch_num {i+1}, current loss is: {epoch_loss_mean}")
+
+def calculate_metrics(y_true, y_pred):
+    """
+    Tính toán các metrics đánh giá cho bài toán forecasting
+    
+    Parameters:
+    -----------
+    y_true : array-like
+        Giá trị thực tế
+    y_pred : array-like
+        Giá trị dự đoán
+        
+    Returns:
+    --------
+    dict
+        Dictionary chứa các metrics
+    """
+    # Đảm bảo input là numpy array
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    
+    # Tính các metrics
+    mse = mean_squared_error(y_true, y_pred)
+    rmse = np.sqrt(mse)
+    mae = mean_absolute_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+    
+    # Tính MAPE (Mean Absolute Percentage Error)
+    mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+    
+    return {
+        'MSE': mse,
+        'RMSE': rmse,
+        'MAE': mae,
+        'R2': r2,
+        'MAPE': mape
+    }
+
+# Ví dụ sử dụng trong notebook:
+def evaluate_predictions(model, X_test, y_test):
+    """
+    Đánh giá model trên tập test
+    
+    Parameters:
+    -----------
+    model : object
+        Model đã train
+    X_test : array-like
+        Dữ liệu test
+    y_test : array-like
+        Giá trị thực tế của test set
+    """
+    # Dự đoán
+    y_pred = model.predict(X_test)
+    
+    # Tính metrics
+    metrics = calculate_metrics(y_test, y_pred)
+    
+    # In kết quả
+    print("Kết quả đánh giá model:")
+    print("-" * 30)
+    for metric_name, value in metrics.items():
+        print(f"{metric_name}: {value:.4f}")
+    
+    # Vẽ biểu đồ so sánh
+    plt.figure(figsize=(12, 6))
+    plt.plot(y_test, label='Thực tế', marker='o')
+    plt.plot(y_pred, label='Dự đoán', marker='x')
+    plt.title('So sánh giá trị thực tế và dự đoán')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+    
+    return metrics
