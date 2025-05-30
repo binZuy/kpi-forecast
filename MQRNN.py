@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 from .Encoder import Encoder
 from .Decoder import GlobalDecoder, LocalDecoder
+from .MQRNN_dataset import MQRNN_dataset
 
-class MQRNN(nn.Module):
+class MQRNN(object):
     def __init__(self, 
                 horizon_size:int, 
                 hidden_size:int, 
@@ -56,40 +57,21 @@ class MQRNN(nn.Module):
         )
         
         # Chuyển model sang double precision
-        self.double()
+        self.encoder.double()
+        self.gdecoder.double()
+        self.ldecoder.double()
         
-    def forward(self, input_data, covariates, target=None):
-        """
-        Forward pass của model
-        """
-        # Permute dimensions cho sequence processing
-        input_data = input_data.permute(1, 0, 2)
-        covariates = covariates.permute(1, 0, 2)
+    def train(self, dataset:MQRNN_dataset):
         
-        # Encoder forward pass
-        enc_hs = self.encoder(input_data)
-        
-        # Concatenate encoder output với covariates
-        hidden_and_covariate = torch.cat([enc_hs, covariates], dim=2)
-        
-        # Global decoder forward pass
-        gdecoder_output = self.gdecoder(hidden_and_covariate)
-        
-        # Local decoder forward pass
-        local_decoder_input = torch.cat([gdecoder_output, covariates], dim=2)
-        local_decoder_output = self.ldecoder(local_decoder_input)
-        
-        # Reshape output
-        seq_len, batch_size, _ = local_decoder_output.shape
-        local_decoder_output = local_decoder_output.view(seq_len, batch_size, self.horizon_size, self.quantile_size)
-        
-        if target is not None:
-            # Tính loss nếu có target
-            target = target.permute(1, 0, 2)
-            loss = self._calc_loss(local_decoder_output, target)
-            return local_decoder_output, loss
-        
-        return local_decoder_output
+        train_fn(encoder=self.encoder, 
+                gdecoder=self.gdecoder, 
+                ldecoder=self.ldecoder,
+                dataset=dataset,
+                lr=self.lr,
+                batch_size=self.batch_size,
+                num_epochs=self.num_epochs,
+                device=self.device)
+        print("training finished")
     
     def _calc_loss(self, predictions, target):
         """
