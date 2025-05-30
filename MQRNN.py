@@ -65,14 +65,14 @@ class MQRNN(object):
         self.gdecoder.double()
         self.ldecoder.double()
         
-    def train(self, train_loader: DataLoader, val_loader: DataLoader):
+    def train(self, dataset: MQRNN_dataset):
         
         train_fn(encoder=self.encoder, 
                 gdecoder=self.gdecoder, 
                 ldecoder=self.ldecoder,
-                train_loader=train_loader,
-                val_loader=val_loader,
+                dataset=dataset,
                 lr=self.lr,
+                batch_size=self.batch_size,
                 num_epochs=self.num_epochs,
                 device=self.device)
         print("training finished")

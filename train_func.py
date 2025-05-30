@@ -53,12 +53,12 @@ def calc_loss(cur_series_covariate_tensor : torch.Tensor,
     return total_loss
 
 
-def train_fn(encoder:Encoder, 
+def train_fn(encoder: Encoder, 
             gdecoder: GlobalDecoder, 
             ldecoder: LocalDecoder,
-            train_loader: DataLoader,
-            val_loader: DataLoader,
+            dataset: MQRNN_dataset, 
             lr: float, 
+            batch_size: int,
             num_epochs: int, 
             device):
     """
@@ -69,6 +69,9 @@ def train_fn(encoder:Encoder,
     gdecoder_optimizer = torch.optim.Adam(gdecoder.parameters(), lr=lr)
     ldecoder_optimizer = torch.optim.Adam(ldecoder.parameters(), lr=lr)
 
+    # Tạo DataLoader
+    data_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+
     # Training loop
     for epoch in range(num_epochs):
         # Training phase
@@ -76,10 +79,10 @@ def train_fn(encoder:Encoder,
         gdecoder.train()
         ldecoder.train()
         
-        train_loss_sum = 0.0
-        total_train_samples = 0
+        epoch_loss_sum = 0.0
+        total_samples = 0
         
-        for batch in train_loader:
+        for batch in data_loader:
             encoder_input, future_covariate, target = batch
             
             # Chuyển dữ liệu sang device
@@ -115,53 +118,15 @@ def train_fn(encoder:Encoder,
             batch_size = encoder_input.shape[0]
             seq_len = encoder_input.shape[1]
             horizon_size = future_covariate.shape[-1]
-            total_train_samples += batch_size * seq_len * horizon_size
-            train_loss_sum += loss.item()
-        
-        # Validation phase
-        encoder.eval()
-        gdecoder.eval()
-        ldecoder.eval()
-        
-        val_loss_sum = 0.0
-        total_val_samples = 0
-        
-        with torch.no_grad():
-            for batch in val_loader:
-                encoder_input, future_covariate, target = batch
-                
-                # Chuyển dữ liệu sang device
-                encoder_input = encoder_input.to(device)
-                future_covariate = future_covariate.to(device)
-                target = target.to(device)
-                
-                # Forward pass
-                enc_hs = encoder(encoder_input)
-                hidden_and_covariate = torch.cat([enc_hs, future_covariate], dim=2)
-                gdecoder_output = gdecoder(hidden_and_covariate)
-                local_decoder_input = torch.cat([gdecoder_output, future_covariate], dim=2)
-                local_decoder_output = ldecoder(local_decoder_input)
-                
-                # Tính loss
-                loss = calc_loss(encoder_input, future_covariate, target, 
-                               encoder, gdecoder, ldecoder, device)
-                
-                # Tính toán loss
-                batch_size = encoder_input.shape[0]
-                seq_len = encoder_input.shape[1]
-                horizon_size = future_covariate.shape[-1]
-                total_val_samples += batch_size * seq_len * horizon_size
-                val_loss_sum += loss.item()
+            total_samples += batch_size * seq_len * horizon_size
+            epoch_loss_sum += loss.item()
         
         # Tính loss trung bình
-        train_loss_mean = train_loss_sum / total_train_samples
-        val_loss_mean = val_loss_sum / total_val_samples
+        epoch_loss_mean = epoch_loss_sum / total_samples
         
         # In kết quả
         if (epoch + 1) % 5 == 0:
-            print(f"Epoch {epoch+1}/{num_epochs}")
-            print(f"Training Loss: {train_loss_mean:.4f}")
-            print(f"Validation Loss: {val_loss_mean:.4f}")
+            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss_mean:.4f}")
 
 def calculate_metrics(y_true, y_pred):
     """
