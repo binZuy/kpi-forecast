@@ -1,8 +1,12 @@
 import torch
+from torch.utils.data import DataLoader
 import torch.nn as nn
 from .Encoder import Encoder
 from .Decoder import GlobalDecoder, LocalDecoder
-from .MQRNN_dataset import MQRNN_dataset
+from .data import MQRNN_dataset
+from .train_func import train_fn
+import numpy as np
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 class MQRNN(object):
     def __init__(self, 
@@ -61,14 +65,14 @@ class MQRNN(object):
         self.gdecoder.double()
         self.ldecoder.double()
         
-    def train(self, dataset:MQRNN_dataset):
+    def train(self, train_loader: DataLoader, val_loader: DataLoader):
         
         train_fn(encoder=self.encoder, 
                 gdecoder=self.gdecoder, 
                 ldecoder=self.ldecoder,
-                dataset=dataset,
+                train_loader=train_loader,
+                val_loader=val_loader,
                 lr=self.lr,
-                batch_size=self.batch_size,
                 num_epochs=self.num_epochs,
                 device=self.device)
         print("training finished")

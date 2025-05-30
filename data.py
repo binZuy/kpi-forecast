@@ -3,13 +3,6 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split
 
-def load_processed_data(npz_path):
-    data = np.load(npz_path)
-    X = data['X']  # [num_samples, input_window]
-    y = data['y']  # [num_samples, output_window]
-    covariates = data['covariates']  # [num_samples, input_window+output_window, num_covariates]
-    return X, y, covariates
-
 class MQRNN_Dataset(Dataset):
     def __init__(self, X, y, covariates):
         """
@@ -45,48 +38,6 @@ class MQRNN_Dataset(Dataset):
         encoder_input = torch.cat([input_series, input_covariate], dim=1)            # [input_window, 1+num_covariates]
 
         return encoder_input, future_covariate, target
-
-def load_and_preprocess_data(data_path='./data/rossmann-store-sales/'):
-    """
-    Load và xử lý dữ liệu từ các file CSV
-    """
-    # Đọc dữ liệu
-    train = pd.read_csv(f'{data_path}/train.csv', low_memory=False)
-    test = pd.read_csv(f'{data_path}/test.csv', low_memory=False)
-    store = pd.read_csv(f'{data_path}/store.csv', low_memory=False)
-
-    # Xử lý missing values
-    test.fillna(1, inplace=True)
-    store.CompetitionDistance = store.CompetitionDistance.fillna(store.CompetitionDistance.median())
-    store.fillna(0, inplace=True)
-
-    # Merge với store data
-    train = pd.merge(train, store, on='Store')
-    test = pd.merge(test, store, on='Store')
-
-    # Chuyển đổi Date thành datetime
-    train['Date'] = pd.to_datetime(train['Date'])
-    test['Date'] = pd.to_datetime(test['Date'])
-
-    # Tạo các feature thời gian
-    for df in [train, test]:
-        df['Year'] = df['Date'].dt.year
-        df['Month'] = df['Date'].dt.month
-        df['Day'] = df['Date'].dt.day
-        df['DayOfWeek'] = df['Date'].dt.dayofweek
-        df['WeekOfYear'] = df['Date'].dt.isocalendar().week.astype(int)
-
-    # Chuẩn hóa các feature số
-    numeric_features = ['CompetitionDistance', 'CompetitionOpenSinceMonth', 
-                       'CompetitionOpenSinceYear', 'Promo2SinceWeek', 'Promo2SinceYear']
-
-    for feature in numeric_features:
-        mean = train[feature].mean()
-        std = train[feature].std()
-        train[feature] = (train[feature] - mean) / std
-        test[feature] = (test[feature] - mean) / std
-
-    return train, test
 
 def create_mqrnn_dataset(df, target_col='Sales', covariate_cols=None):
     """
