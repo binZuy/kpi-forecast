@@ -3,10 +3,7 @@ import torch.nn as nn
 from .Encoder import Encoder
 from .Decoder import GlobalDecoder, LocalDecoder
 
-class MQRNN(object):
-    """
-    This class holds the encoder and the global decoder and local decoder.
-    """
+class MQRNN(nn.Module):
     def __init__(self, 
                 horizon_size:int, 
                 hidden_size:int, 
@@ -21,7 +18,8 @@ class MQRNN(object):
                 context_size:int, 
                 covariate_size:int,
                 device):
-        print(f"device is: {device}")
+        super(MQRNN, self).__init__()
+        
         self.device = device
         self.horizon_size = horizon_size
         self.quantile_size = len(quantiles)
@@ -31,123 +29,76 @@ class MQRNN(object):
         self.num_epochs = num_epochs
         self.covariate_size = covariate_size
         
-        self.encoder = Encoder(horizon_size=horizon_size,
-                             covariate_size=covariate_size,
-                             hidden_size=hidden_size, 
-                             dropout=dropout,
-                             layer_size=layer_size,
-                             by_direction=by_direction,
-                             device=device)
-        
-        self.gdecoder = GlobalDecoder(hidden_size=hidden_size,
-                                    covariate_size=covariate_size,
-                                    horizon_size=horizon_size,
-                                    context_size=context_size)
-        
-        self.ldecoder = LocalDecoder(covariate_size=covariate_size,
-                                    quantile_size=self.quantile_size,
-                                    context_size=context_size,
-                                    quantiles=quantiles,
-                                    horizon_size=horizon_size)
-        
-        self.encoder.double()
-        self.gdecoder.double()
-        self.ldecoder.double()
-    
-    def train(self, dataset):
-        """
-        Train the model using the provided dataset
-        """
-        # Initialize optimizers
-        encoder_optimizer = torch.optim.Adam(self.encoder.parameters(), lr=self.lr)
-        gdecoder_optimizer = torch.optim.Adam(self.gdecoder.parameters(), lr=self.lr)
-        ldecoder_optimizer = torch.optim.Adam(self.ldecoder.parameters(), lr=self.lr)
-        
-        # Create data loader
-        data_iter = torch.utils.data.DataLoader(
-            dataset=dataset, 
-            batch_size=self.batch_size, 
-            shuffle=True,
-            num_workers=0
+        # Khởi tạo các components
+        self.encoder = Encoder(
+            horizon_size=horizon_size,
+            covariate_size=covariate_size,
+            hidden_size=hidden_size, 
+            dropout=dropout,
+            layer_size=layer_size,
+            by_direction=by_direction,
+            device=device
         )
         
-        # Training loop
-        for epoch in range(self.num_epochs):
-            epoch_loss_sum = 0.0
-            total_sample = 0
-            
-            for (cur_series_tensor, cur_covariate_tensor, cur_real_vals_tensor) in data_iter:
-                batch_size = cur_series_tensor.shape[0]
-                seq_len = cur_series_tensor.shape[1]
-                horizon_size = cur_covariate_tensor.shape[-1]
-                total_sample += batch_size * seq_len * horizon_size
-                
-                # Zero gradients
-                encoder_optimizer.zero_grad()
-                gdecoder_optimizer.zero_grad()
-                ldecoder_optimizer.zero_grad()
-                
-                # Forward pass
-                loss = self._calc_loss(cur_series_tensor, cur_covariate_tensor, cur_real_vals_tensor)
-                
-                # Backward pass
-                loss.backward()
-                
-                # Update parameters
-                encoder_optimizer.step()
-                gdecoder_optimizer.step()
-                ldecoder_optimizer.step()
-                
-                epoch_loss_sum += loss.item()
-            
-            # Print progress
-            epoch_loss_mean = epoch_loss_sum / total_sample
-            if (epoch + 1) % 5 == 0:
-                print(f"epoch_num {epoch+1}, current loss is: {epoch_loss_mean}")
+        self.gdecoder = GlobalDecoder(
+            hidden_size=hidden_size,
+            covariate_size=covariate_size,
+            horizon_size=horizon_size,
+            context_size=context_size
+        )
         
-        print("training finished")
-    
-    def _calc_loss(self, cur_series_tensor, cur_covariate_tensor, cur_real_vals_tensor):
+        self.ldecoder = LocalDecoder(
+            covariate_size=covariate_size,
+            quantile_size=self.quantile_size,
+            context_size=context_size,
+            quantiles=quantiles,
+            horizon_size=horizon_size
+        )
+        
+        # Chuyển model sang double precision
+        self.double()
+        
+    def forward(self, input_data, covariates, target=None):
         """
-        Calculate the quantile loss for the current batch
+        Forward pass của model
         """
-        # Convert to double precision
-        cur_series_tensor = cur_series_tensor.double()
-        cur_covariate_tensor = cur_covariate_tensor.double()
-        cur_real_vals_tensor = cur_real_vals_tensor.double()
-        
-        # Move tensors to device
-        cur_series_tensor = cur_series_tensor.to(self.device)
-        cur_covariate_tensor = cur_covariate_tensor.to(self.device)
-        cur_real_vals_tensor = cur_real_vals_tensor.to(self.device)
-        
-        # Permute dimensions for sequence processing
-        cur_series_tensor = cur_series_tensor.permute(1,0,2)
-        cur_covariate_tensor = cur_covariate_tensor.permute(1,0,2)
-        cur_real_vals_tensor = cur_real_vals_tensor.permute(1,0,2)
+        # Permute dimensions cho sequence processing
+        input_data = input_data.permute(1, 0, 2)
+        covariates = covariates.permute(1, 0, 2)
         
         # Encoder forward pass
-        enc_hs = self.encoder(cur_series_tensor)
+        enc_hs = self.encoder(input_data)
         
-        # Concatenate encoder output with covariates
-        hidden_and_covariate = torch.cat([enc_hs, cur_covariate_tensor], dim=2)
+        # Concatenate encoder output với covariates
+        hidden_and_covariate = torch.cat([enc_hs, covariates], dim=2)
         
         # Global decoder forward pass
         gdecoder_output = self.gdecoder(hidden_and_covariate)
         
         # Local decoder forward pass
-        local_decoder_input = torch.cat([gdecoder_output, cur_covariate_tensor], dim=2)
+        local_decoder_input = torch.cat([gdecoder_output, covariates], dim=2)
         local_decoder_output = self.ldecoder(local_decoder_input)
         
-        # Reshape output for loss calculation
+        # Reshape output
         seq_len, batch_size, _ = local_decoder_output.shape
         local_decoder_output = local_decoder_output.view(seq_len, batch_size, self.horizon_size, self.quantile_size)
         
-        # Calculate quantile loss
+        if target is not None:
+            # Tính loss nếu có target
+            target = target.permute(1, 0, 2)
+            loss = self._calc_loss(local_decoder_output, target)
+            return local_decoder_output, loss
+        
+        return local_decoder_output
+    
+    def _calc_loss(self, predictions, target):
+        """
+        Tính quantile loss
+        """
         total_loss = torch.tensor([0.0], device=self.device)
         for i in range(self.quantile_size):
             p = self.quantiles[i]
-            errors = cur_real_vals_tensor - local_decoder_output[:,:,:,i]
+            errors = target - predictions[:,:,:,i]
             cur_loss = torch.max((p-1)*errors, p*errors)
             total_loss += torch.sum(cur_loss)
             
