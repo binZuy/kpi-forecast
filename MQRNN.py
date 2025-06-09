@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 import torch.nn as nn
 from .Encoder import Encoder
 from .Decoder import GlobalDecoder, LocalDecoder
-from .data import MQRNN_dataset
+from .data import MQRNN_Dataset
 from .train_func import train_fn
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -65,7 +65,7 @@ class MQRNN(object):
         self.gdecoder.double()
         self.ldecoder.double()
         
-    def train(self, dataset: MQRNN_dataset):
+    def train(self, dataset: MQRNN_Dataset):
         
         train_fn(encoder=self.encoder, 
                 gdecoder=self.gdecoder, 

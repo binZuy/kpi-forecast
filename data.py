@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split
+from sklearn.model_selection import TimeSeriesSplit
 
 class MQRNN_Dataset(Dataset):
     def __init__(self, X, y, covariates):
@@ -38,6 +39,53 @@ class MQRNN_Dataset(Dataset):
         encoder_input = torch.cat([input_series, input_covariate], dim=1)            # [input_window, 1+num_covariates]
 
         return encoder_input, future_covariate, target
+
+def load_and_preprocess_data(data_path='./data/rossmann-store-sales/'):
+    """
+    Load và xử lý dữ liệu từ các file CSV
+    """
+    # Đọc dữ liệu
+    train = pd.read_csv(f'{data_path}/train.csv', low_memory=False)
+    test = pd.read_csv(f'{data_path}/test.csv', low_memory=False)
+    store = pd.read_csv(f'{data_path}/store.csv', low_memory=False)
+
+    # Xử lý missing values
+    test.fillna(1, inplace=True)
+    store.CompetitionDistance = store.CompetitionDistance.fillna(store.CompetitionDistance.median())
+    store.fillna(0, inplace=True)
+
+    # Merge với store data
+    train = pd.merge(train, store, on='Store')
+    test = pd.merge(test, store, on='Store')
+
+    # Chuyển đổi Date thành datetime
+    train['Date'] = pd.to_datetime(train['Date'])
+    test['Date'] = pd.to_datetime(test['Date'])
+
+    # Tạo các feature thời gian
+    for df in [train, test]:
+        df['Year'] = df['Date'].dt.year
+        df['Month'] = df['Date'].dt.month
+        df['Day'] = df['Date'].dt.day
+        df['DayOfWeek'] = df['Date'].dt.dayofweek
+        df['WeekOfYear'] = df['Date'].dt.isocalendar().week.astype(int)
+
+    # Chuẩn hóa các feature số
+    numeric_features = ['CompetitionDistance', 'CompetitionOpenSinceMonth', 
+                       'CompetitionOpenSinceYear', 'Promo2SinceWeek', 'Promo2SinceYear']
+
+    for feature in numeric_features:
+        mean = train[feature].mean()
+        std = train[feature].std()
+        train[feature] = (train[feature] - mean) / std
+        test[feature] = (test[feature] - mean) / std
+
+    # One-hot encoding cho categorical variables
+    categorical_cols = ['StoreType', 'Assortment', 'StateHoliday']
+    train = pd.get_dummies(train, columns=categorical_cols)
+    test = pd.get_dummies(test, columns=categorical_cols)
+
+    return train, test
 
 def create_mqrnn_dataset(df, target_col='Sales', covariate_cols=None):
     """
@@ -82,9 +130,10 @@ def prepare_data_for_training(train, test, config):
     )
 
     # Chia dataset thành train và validation
-    train_size = int(config['train_ratio'] * len(full_dataset))
-    val_size = len(full_dataset) - train_size
-    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+    tscv = TimeSeriesSplit(n_splits=5)
+    for train_idx, val_idx in tscv.split(full_dataset):
+        train_dataset = torch.utils.data.Subset(full_dataset, train_idx)
+        val_dataset = torch.utils.data.Subset(full_dataset, val_idx)
 
     # Tạo dataloaders
     train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
@@ -100,5 +149,11 @@ def get_feature_names():
             'CompetitionDistance', 'CompetitionOpenSinceMonth',
             'CompetitionOpenSinceYear', 'Promo2SinceWeek', 'Promo2SinceYear',
             'Promo', 'StateHoliday', 'SchoolHoliday', 'Open']
+
+def remove_outliers(df, column, n_std=3):
+    mean = df[column].mean()
+    std = df[column].std()
+    df = df[abs(df[column] - mean) <= (n_std * std)]
+    return df
 
 

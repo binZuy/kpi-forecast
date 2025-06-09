@@ -1,7 +1,7 @@
 import torch
 from .Encoder import Encoder
 from .Decoder import GlobalDecoder, LocalDecoder
-from .data import MQRNN_dataset
+from .data import MQRNN_Dataset
 from torch.utils.data import DataLoader
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -56,7 +56,7 @@ def calc_loss(cur_series_covariate_tensor : torch.Tensor,
 def train_fn(encoder: Encoder, 
             gdecoder: GlobalDecoder, 
             ldecoder: LocalDecoder,
-            dataset: MQRNN_dataset, 
+            dataset: MQRNN_Dataset, 
             lr: float, 
             batch_size: int,
             num_epochs: int, 
