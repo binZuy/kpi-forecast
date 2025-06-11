@@ -108,19 +108,26 @@ def create_mqrnn_dataset(df, target_col='Sales', covariate_cols=None):
     # Tạo covariate dataframe - xử lý từng covariate riêng biệt
     covariate_dfs = []
     for col in covariate_cols:
+        # Đảm bảo cột là numeric
+        if df[col].dtype == 'object':
+            # Nếu là cột categorical, chuyển thành numeric
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            # Fill NaN với giá trị trung bình
+            df[col] = df[col].fillna(df[col].mean())
+        
         cov_df = df.pivot(index='Date', columns='Store', values=col)
         covariate_dfs.append(cov_df)
     
     # Kết hợp tất cả covariates
     covariate_df = pd.concat(covariate_dfs, axis=1)
     
-    # Reshape covariates để phù hợp với cấu trúc [num_samples, input_window+output_window, num_covariates]
+    # Reshape covariates để phù hợp với cấu trúc [num_samples, num_stores, num_covariates]
     num_stores = len(target_series.columns)
     num_dates = len(target_series.index)
     num_covariates = len(covariate_cols)
     
-    # Reshape covariates array
-    covariates_array = covariate_df.values.reshape(num_dates, num_stores, num_covariates)
+    # Reshape covariates array và chuyển sang float32
+    covariates_array = covariate_df.values.reshape(num_dates, num_stores, num_covariates).astype(np.float32)
     
     return target_series, covariates_array
 
@@ -139,9 +146,9 @@ def prepare_data_for_training(train, test, config):
 
     # Tạo MQRNN dataset
     full_dataset = MQRNN_Dataset(
-        X=train_target.values,
-        y=train_target.values,
-        covariates=train_covariates
+        X=train_target.values,  # train_target là DataFrame nên cần .values
+        y=train_target.values,  # train_target là DataFrame nên cần .values
+        covariates=train_covariates  # train_covariates đã là numpy array nên không cần .values
     )
 
     # Chia dataset thành train và validation

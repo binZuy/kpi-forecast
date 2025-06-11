@@ -59,10 +59,10 @@ class MQRNN(object):
             horizon_size=horizon_size
         )
         
-        # Chuyển model sang double precision
-        self.encoder.double()
-        self.gdecoder.double()
-        self.ldecoder.double()
+        # Chuyển model sang device
+        self.encoder.to(device)
+        self.gdecoder.to(device)
+        self.ldecoder.to(device)
         
     def train(self, dataset: MQRNN_Dataset):
         
