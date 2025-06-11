@@ -23,8 +23,7 @@ class MQRNN(object):
                 context_size:int, 
                 covariate_size:int,
                 device):
-        super(MQRNN, self).__init__()
-        
+        print(f"device is: {device}")
         self.device = device
         self.horizon_size = horizon_size
         self.quantile_size = len(quantiles)
