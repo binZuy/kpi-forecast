@@ -31,11 +31,11 @@ class MQRNN_Dataset(Dataset):
         # Đầu ra: chuỗi sales tương lai
         target = self.y[idx]  # [output_window]
 
-        # Chuyển sang tensor
-        input_series = torch.tensor(input_series, dtype=torch.float32).unsqueeze(-1)  # [input_window, 1]
-        input_covariate = torch.tensor(input_covariate, dtype=torch.float32)         # [num_stores, num_covariates]
-        future_covariate = torch.tensor(future_covariate, dtype=torch.float32)       # [num_stores, num_covariates]
-        target = torch.tensor(target, dtype=torch.float32)                           # [output_window]
+        # Chuyển sang tensor với dtype float64
+        input_series = torch.tensor(input_series, dtype=torch.float64).unsqueeze(-1)  # [input_window, 1]
+        input_covariate = torch.tensor(input_covariate, dtype=torch.float64)         # [num_stores, num_covariates]
+        future_covariate = torch.tensor(future_covariate, dtype=torch.float64)       # [num_stores, num_covariates]
+        target = torch.tensor(target, dtype=torch.float64)                           # [output_window]
 
         # Ghép input_series và input_covariate cho encoder
         encoder_input = torch.cat([input_series, input_covariate], dim=1)            # [input_window, 1+num_covariates]
@@ -126,8 +126,8 @@ def create_mqrnn_dataset(df, target_col='Sales', covariate_cols=None):
     num_dates = len(target_series.index)
     num_covariates = len(covariate_cols)
     
-    # Reshape covariates array và chuyển sang float32
-    covariates_array = covariate_df.values.reshape(num_dates, num_stores, num_covariates).astype(np.float32)
+    # Reshape covariates array và chuyển sang float64
+    covariates_array = covariate_df.values.reshape(num_dates, num_stores, num_covariates).astype(np.float64)
     
     return target_series, covariates_array
 

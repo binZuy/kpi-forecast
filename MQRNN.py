@@ -59,10 +59,18 @@ class MQRNN(object):
             horizon_size=horizon_size
         )
         
-        # Chuyển model sang device
-        self.encoder.to(device)
-        self.gdecoder.to(device)
-        self.ldecoder.to(device)
+        # Chuyển model sang device và double precision
+        self.encoder.to(device).double()
+        self.gdecoder.to(device).double()
+        self.ldecoder.to(device).double()
+        
+        # Đảm bảo tất cả parameters là float64
+        for param in self.encoder.parameters():
+            param.data = param.data.double()
+        for param in self.gdecoder.parameters():
+            param.data = param.data.double()
+        for param in self.ldecoder.parameters():
+            param.data = param.data.double()
         
     def train(self, dataset: MQRNN_Dataset):
         
