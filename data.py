@@ -9,7 +9,7 @@ class MQRNN_Dataset(Dataset):
         """
         X: [num_samples, input_window]
         y: [num_samples, output_window]
-        covariates: [num_samples, input_window+output_window, num_covariates]
+        covariates: [num_samples, num_stores, num_covariates]
         """
         self.X = X
         self.y = y
@@ -22,17 +22,19 @@ class MQRNN_Dataset(Dataset):
         # Đầu vào cho encoder: chuỗi sales quá khứ + covariate quá khứ
         input_window = self.X.shape[1]
         input_series = self.X[idx]  # [input_window]
-        input_covariate = self.covariates[idx, :input_window, :]  # [input_window, num_covariates]
+        input_covariate = self.covariates[idx]  # [num_stores, num_covariates]
+        
         # Đầu vào cho decoder: covariate tương lai
         output_window = self.y.shape[1]
-        future_covariate = self.covariates[idx, input_window:, :]  # [output_window, num_covariates]
+        future_covariate = self.covariates[idx]  # [num_stores, num_covariates]
+        
         # Đầu ra: chuỗi sales tương lai
         target = self.y[idx]  # [output_window]
 
         # Chuyển sang tensor
         input_series = torch.tensor(input_series, dtype=torch.float32).unsqueeze(-1)  # [input_window, 1]
-        input_covariate = torch.tensor(input_covariate, dtype=torch.float32)         # [input_window, num_covariates]
-        future_covariate = torch.tensor(future_covariate, dtype=torch.float32)       # [output_window, num_covariates]
+        input_covariate = torch.tensor(input_covariate, dtype=torch.float32)         # [num_stores, num_covariates]
+        future_covariate = torch.tensor(future_covariate, dtype=torch.float32)       # [num_stores, num_covariates]
         target = torch.tensor(target, dtype=torch.float32)                           # [output_window]
 
         # Ghép input_series và input_covariate cho encoder
@@ -103,11 +105,24 @@ def create_mqrnn_dataset(df, target_col='Sales', covariate_cols=None):
     # Tạo target series
     target_series = df.pivot(index='Date', columns='Store', values=target_col)
     
-    # Tạo covariate dataframe
-    covariate_df = df.pivot(index='Date', columns='Store', values=covariate_cols)
-    covariate_df.columns = [f"{col}_{store}" for col, store in covariate_df.columns]
+    # Tạo covariate dataframe - xử lý từng covariate riêng biệt
+    covariate_dfs = []
+    for col in covariate_cols:
+        cov_df = df.pivot(index='Date', columns='Store', values=col)
+        covariate_dfs.append(cov_df)
     
-    return target_series, covariate_df
+    # Kết hợp tất cả covariates
+    covariate_df = pd.concat(covariate_dfs, axis=1)
+    
+    # Reshape covariates để phù hợp với cấu trúc [num_samples, input_window+output_window, num_covariates]
+    num_stores = len(target_series.columns)
+    num_dates = len(target_series.index)
+    num_covariates = len(covariate_cols)
+    
+    # Reshape covariates array
+    covariates_array = covariate_df.values.reshape(num_dates, num_stores, num_covariates)
+    
+    return target_series, covariates_array
 
 def prepare_data_for_training(train, test, config):
     """
@@ -126,7 +141,7 @@ def prepare_data_for_training(train, test, config):
     full_dataset = MQRNN_Dataset(
         X=train_target.values,
         y=train_target.values,
-        covariates=train_covariates.values
+        covariates=train_covariates
     )
 
     # Chia dataset thành train và validation
