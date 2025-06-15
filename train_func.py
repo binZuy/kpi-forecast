@@ -96,10 +96,16 @@ def train_fn(encoder: Encoder,
             ldecoder_optimizer.zero_grad()
             
             # Forward pass
+            print(f"encoder_input shape: {encoder_input.shape}")
             enc_hs = encoder(encoder_input)
+            print(f"enc_hs shape: {enc_hs.shape}")
+            print(f"future_covariate shape: {future_covariate.shape}")
             hidden_and_covariate = torch.cat([enc_hs, future_covariate], dim=2)
+            print(f"hidden_and_covariate shape: {hidden_and_covariate.shape}")
             gdecoder_output = gdecoder(hidden_and_covariate)
+            print(f"gdecoder_output shape: {gdecoder_output.shape}")
             local_decoder_input = torch.cat([gdecoder_output, future_covariate], dim=2)
+            print(f"local_decoder_input shape: {local_decoder_input.shape}")
             local_decoder_output = ldecoder(local_decoder_input)
             
             # Tính loss
