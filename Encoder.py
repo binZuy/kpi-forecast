@@ -28,6 +28,7 @@ class Encoder(nn.Module):
                             hidden_size=hidden_size, 
                             num_layers=layer_size, 
                             dropout=dropout,
+                            batch_first=True,
                             bidirectional=by_direction)
         for param in self.LSTM.parameters():
             if len(param.shape) >= 2:

@@ -82,13 +82,13 @@ def train_fn(encoder: Encoder,
         epoch_loss_sum = 0.0
         total_samples = 0
         
-        for batch in data_loader:
-            encoder_input, future_covariate, target = batch
-            
-            # Chuyển dữ liệu sang device
-            encoder_input = encoder_input.to(device)
-            future_covariate = future_covariate.to(device)
-            target = target.to(device)
+        for i in range(len(dataset)):
+            encoder_input, future_covariate, target = dataset[i]
+            print(f"encoder_input shape 1: {encoder_input.shape}")
+            # Không cần thêm batch dimension nữa vì đã có trong dataset
+            encoder_input = encoder_input.to(device)  # [1, context_size, 1+num_features]
+            future_covariate = future_covariate.to(device)  # [1, horizon_size, num_features]
+            target = target.to(device)  # [horizon_size]
             
             # Zero gradients
             encoder_optimizer.zero_grad()
@@ -96,7 +96,7 @@ def train_fn(encoder: Encoder,
             ldecoder_optimizer.zero_grad()
             
             # Forward pass
-            print(f"encoder_input shape: {encoder_input.shape}")
+            print(f"encoder_input shape 2: {encoder_input.shape}")
             enc_hs = encoder(encoder_input)
             print(f"enc_hs shape: {enc_hs.shape}")
             print(f"future_covariate shape: {future_covariate.shape}")
