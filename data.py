@@ -144,7 +144,6 @@ class MQRNN_Dataset(torch.utils.data.Dataset):
         # Lấy covariates cho decoder (tương lai)
         next_covariate = self.covariate_df.iloc[idx+self.context_size:idx+self.context_size+self.horizon_size, :].values.astype(np.float64)
         next_covariate_tensor = torch.tensor(next_covariate, dtype=torch.float64)  # [horizon_size, num_features]
-        next_covariate_tensor = next_covariate_tensor.unsqueeze(0)  # [1, horizon_size, num_features]
         print(f"Shape của next_covariate_tensor: {next_covariate_tensor.shape}")
         
         # Lấy giá trị thực tế cho tương lai (target)
@@ -158,10 +157,6 @@ class MQRNN_Dataset(torch.utils.data.Dataset):
         # Ghép series và covariates cho encoder
         cur_series_covariate_tensor = torch.cat([cur_series_tensor, cur_covariate_tensor], dim=1)  # [context_size, 1+num_features]
         print(f"Shape của cur_series_covariate_tensor: {cur_series_covariate_tensor.shape}")
-        
-        # Thêm batch dimension
-        cur_series_covariate_tensor = cur_series_covariate_tensor.unsqueeze(0)  # [1, context_size, 1+num_features]
-        print(f"Shape của cur_series_covariate_tensor sau khi thêm batch: {cur_series_covariate_tensor.shape}")
         
         cur_real_vals_tensor = torch.tensor(real_vals, dtype=torch.float64)  # [horizon_size]
         print(f"Shape của cur_real_vals_tensor: {cur_real_vals_tensor.shape}")

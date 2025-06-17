@@ -74,9 +74,9 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
             # future_covariate: [batch_size, horizon_size, num_features]
             # target: [batch_size, horizon_size]
 
-            encoder_input = encoder_input.to(device).float()
-            future_covariate = future_covariate.to(device).float()
-            target = target.to(device).float()
+            encoder_input = encoder_input.to(device).double()
+            future_covariate = future_covariate.to(device).double()
+            target = target.to(device).double()
 
             encoder_optimizer.zero_grad()
             gdecoder_optimizer.zero_grad()
