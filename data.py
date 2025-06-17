@@ -121,7 +121,7 @@ class MQRNN_Dataset(torch.utils.data.Dataset):
         
         print("\nCác cột sau khi xử lý:", self.covariate_df.columns.tolist())
         print(f"Số lượng features: {self.covariate_df.shape[1]}")
-
+        print(f"self.covariate_df.shape[0] : {self.covariate_df.shape[0]}")
     def __len__(self):
         # The number of items is the number of possible sequences
         return self.seq_len
