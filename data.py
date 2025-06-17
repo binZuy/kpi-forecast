@@ -23,14 +23,14 @@ class MQRNN_Dataset(torch.utils.data.Dataset):
         quantile_size: int
             Số lượng quantiles cần dự báo
         """
-        print("=== Khởi tạo MQRNN_Dataset ===")
+        print("\n=== Khởi tạo MQRNN_Dataset ===")
         print(f"Shape của target_df: {target_df.shape}")
         print(f"Shape của covariate_df: {covariate_df.shape}")
         print(f"horizon_size: {horizon_size}")
         print(f"quantile_size: {quantile_size}")
 
         self.series_df = target_df
-        self.covariate_df = covariate_df.copy()  # Tạo bản sao để tránh thay đổi dữ liệu gốc
+        self.covariate_df = covariate_df.copy()
         
         # Xử lý các cột categorical
         self._process_categorical_columns()
@@ -40,8 +40,9 @@ class MQRNN_Dataset(torch.utils.data.Dataset):
         self.context_size = context_size
 
         # Calculate the number of possible sequences
-        self.seq_len = self.series_df.shape[0] - self.horizon_size
-        print(f"Số lượng chuỗi dự đoán có thể có (seq_len): {self.seq_len}")
+        self.seq_len = self.series_df.shape[0] - self.context_size - self.horizon_size
+        print(f"Số lượng mẫu có thể có: {self.seq_len}")
+        print(f"Số lượng features sau khi xử lý: {self.covariate_df.shape[1]}")
 
         self.covariate_size = self.covariate_df.shape[1]
         print(f"Số lượng covariates: {self.covariate_size}")
@@ -50,29 +51,55 @@ class MQRNN_Dataset(torch.utils.data.Dataset):
     
     def _process_categorical_columns(self):
         """Xử lý các cột categorical trong covariates"""
-        print("Đang xử lý các cột categorical...")
+        print("\nĐang xử lý các cột categorical...")
         
         # Xử lý StoreType
         if 'StoreType' in self.covariate_df.columns:
             print("Xử lý StoreType...")
+            # Chuyển đổi string thành số
+            store_type_map = {'a': 0, 'b': 1, 'c': 2, 'd': 3}
+            self.covariate_df['StoreType'] = self.covariate_df['StoreType'].map(store_type_map)
+            # One-hot encoding
             store_type_dummies = pd.get_dummies(self.covariate_df['StoreType'], prefix='StoreType')
             self.covariate_df = pd.concat([self.covariate_df.drop('StoreType', axis=1), store_type_dummies], axis=1)
+            print(f"Số cột sau khi xử lý StoreType: {self.covariate_df.shape[1]}")
         
         # Xử lý Assortment
         if 'Assortment' in self.covariate_df.columns:
             print("Xử lý Assortment...")
+            # Chuyển đổi string thành số
+            assortment_map = {'a': 0, 'b': 1, 'c': 2}
+            self.covariate_df['Assortment'] = self.covariate_df['Assortment'].map(assortment_map)
+            # One-hot encoding
             assortment_dummies = pd.get_dummies(self.covariate_df['Assortment'], prefix='Assortment')
             self.covariate_df = pd.concat([self.covariate_df.drop('Assortment', axis=1), assortment_dummies], axis=1)
+            print(f"Số cột sau khi xử lý Assortment: {self.covariate_df.shape[1]}")
         
         # Xử lý PromoInterval
         if 'PromoInterval' in self.covariate_df.columns:
             print("Xử lý PromoInterval...")
-            # Tách các tháng và tạo one-hot encoding
-            promo_intervals = self.covariate_df['PromoInterval'].str.split(',')
-            months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec']
-            for month in months:
-                self.covariate_df[f'Promo_{month}'] = self.covariate_df['PromoInterval'].str.contains(month).astype(int)
-            self.covariate_df = self.covariate_df.drop('PromoInterval', axis=1)
+            # Chuyển đổi string thành số
+            promo_interval_map = {
+                'Jan,Apr,Jul,Oct': 0,
+                'Feb,May,Aug,Nov': 1,
+                'Mar,Jun,Sept,Dec': 2
+            }
+            self.covariate_df['PromoInterval'] = self.covariate_df['PromoInterval'].map(promo_interval_map)
+            # One-hot encoding
+            promo_interval_dummies = pd.get_dummies(self.covariate_df['PromoInterval'], prefix='PromoInterval')
+            self.covariate_df = pd.concat([self.covariate_df.drop('PromoInterval', axis=1), promo_interval_dummies], axis=1)
+            print(f"Số cột sau khi xử lý PromoInterval: {self.covariate_df.shape[1]}")
+        
+        # Xử lý StateHoliday
+        if 'StateHoliday' in self.covariate_df.columns:
+            print("Xử lý StateHoliday...")
+            # Chuyển đổi string thành số
+            state_holiday_map = {'0': 0, 'a': 1, 'b': 2, 'c': 3, 'd': 4}
+            self.covariate_df['StateHoliday'] = self.covariate_df['StateHoliday'].map(state_holiday_map)
+            # One-hot encoding
+            state_holiday_dummies = pd.get_dummies(self.covariate_df['StateHoliday'], prefix='StateHoliday')
+            self.covariate_df = pd.concat([self.covariate_df.drop('StateHoliday', axis=1), state_holiday_dummies], axis=1)
+            print(f"Số cột sau khi xử lý StateHoliday: {self.covariate_df.shape[1]}")
         
         # Xử lý các cột boolean
         boolean_cols = ['Promo', 'Open', 'SchoolHoliday']
@@ -80,16 +107,10 @@ class MQRNN_Dataset(torch.utils.data.Dataset):
             if col in self.covariate_df.columns:
                 self.covariate_df[col] = self.covariate_df[col].astype(int)
         
-        # Xử lý StateHoliday
-        if 'StateHoliday' in self.covariate_df.columns:
-            self.covariate_df['StateHoliday'] = self.covariate_df['StateHoliday'].map({
-                '0': 0, 'a': 1, 'b': 2, 'c': 3, 'd': 4
-            })
-        
         # Chuẩn hóa các cột số
         numeric_cols = self.covariate_df.select_dtypes(include=[np.number]).columns
         for col in numeric_cols:
-            if col not in ['Promo', 'Open', 'SchoolHoliday', 'StateHoliday']:
+            if col not in ['Promo', 'Open', 'SchoolHoliday']:
                 mean = self.covariate_df[col].mean()
                 std = self.covariate_df[col].std()
                 if std != 0:
@@ -97,7 +118,9 @@ class MQRNN_Dataset(torch.utils.data.Dataset):
         
         # Chuyển đổi tất cả các cột sang float64
         self.covariate_df = self.covariate_df.astype(np.float64)
-        print(f"Số lượng covariates sau khi xử lý: {self.covariate_df.shape[1]}")
+        
+        print("\nCác cột sau khi xử lý:", self.covariate_df.columns.tolist())
+        print(f"Số lượng features: {self.covariate_df.shape[1]}")
 
     def __len__(self):
         # The number of items is the number of possible sequences
@@ -120,7 +143,9 @@ class MQRNN_Dataset(torch.utils.data.Dataset):
         
         # Lấy covariates cho decoder (tương lai)
         next_covariate = self.covariate_df.iloc[idx+self.context_size:idx+self.context_size+self.horizon_size, :].values.astype(np.float64)
-        print(f"Shape của next_covariate: {next_covariate.shape}")
+        next_covariate_tensor = torch.tensor(next_covariate, dtype=torch.float64)  # [horizon_size, num_features]
+        next_covariate_tensor = next_covariate_tensor.unsqueeze(0)  # [1, horizon_size, num_features]
+        print(f"Shape của next_covariate_tensor: {next_covariate_tensor.shape}")
         
         # Lấy giá trị thực tế cho tương lai (target)
         real_vals = self.series_df.iloc[idx+self.context_size:idx+self.context_size+self.horizon_size, 0].values.astype(np.float64)
@@ -137,10 +162,6 @@ class MQRNN_Dataset(torch.utils.data.Dataset):
         # Thêm batch dimension
         cur_series_covariate_tensor = cur_series_covariate_tensor.unsqueeze(0)  # [1, context_size, 1+num_features]
         print(f"Shape của cur_series_covariate_tensor sau khi thêm batch: {cur_series_covariate_tensor.shape}")
-        
-        next_covariate_tensor = torch.tensor(next_covariate, dtype=torch.float64)  # [horizon_size, num_features]
-        next_covariate_tensor = next_covariate_tensor.unsqueeze(0)  # [1, horizon_size, num_features]
-        print(f"Shape của next_covariate_tensor: {next_covariate_tensor.shape}")
         
         cur_real_vals_tensor = torch.tensor(real_vals, dtype=torch.float64)  # [horizon_size]
         print(f"Shape của cur_real_vals_tensor: {cur_real_vals_tensor.shape}")

@@ -53,86 +53,66 @@ def calc_loss(cur_series_covariate_tensor : torch.Tensor,
     return total_loss
 
 
-def train_fn(encoder: Encoder, 
-            gdecoder: GlobalDecoder, 
-            ldecoder: LocalDecoder,
-            dataset: MQRNN_Dataset, 
-            lr: float, 
-            batch_size: int,
-            num_epochs: int, 
-            device):
-    """
-    Hàm training cho MQRNN
-    """
-    # Khởi tạo optimizers
+def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, device):
     encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr=lr)
     gdecoder_optimizer = torch.optim.Adam(gdecoder.parameters(), lr=lr)
     ldecoder_optimizer = torch.optim.Adam(ldecoder.parameters(), lr=lr)
 
-    # Tạo DataLoader
-    data_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0)
 
-    # Training loop
     for epoch in range(num_epochs):
-        # Training phase
         encoder.train()
         gdecoder.train()
         ldecoder.train()
-        
         epoch_loss_sum = 0.0
         total_samples = 0
-        
-        for i in range(len(dataset)):
-            encoder_input, future_covariate, target = dataset[i]
-            print(f"encoder_input shape 1: {encoder_input.shape}")
-            # Không cần thêm batch dimension nữa vì đã có trong dataset
-            encoder_input = encoder_input.to(device)  # [1, context_size, 1+num_features]
-            future_covariate = future_covariate.to(device)  # [1, horizon_size, num_features]
-            target = target.to(device)  # [horizon_size]
-            
-            # Zero gradients
+
+        for batch in data_loader:
+            # unpack batch
+            encoder_input, future_covariate, target = batch
+            # encoder_input: [batch_size, context_size, 1+num_features]
+            # future_covariate: [batch_size, horizon_size, num_features]
+            # target: [batch_size, horizon_size]
+
+            encoder_input = encoder_input.to(device).float()
+            future_covariate = future_covariate.to(device).float()
+            target = target.to(device).float()
+
             encoder_optimizer.zero_grad()
             gdecoder_optimizer.zero_grad()
             ldecoder_optimizer.zero_grad()
-            
-            # Forward pass
-            print(f"encoder_input shape 2: {encoder_input.shape}")
-            enc_hs = encoder(encoder_input)
-            print(f"enc_hs shape: {enc_hs.shape}")
-            print(f"future_covariate shape: {future_covariate.shape}")
-            hidden_and_covariate = torch.cat([enc_hs, future_covariate], dim=2)
-            print(f"hidden_and_covariate shape: {hidden_and_covariate.shape}")
-            gdecoder_output = gdecoder(hidden_and_covariate)
-            print(f"gdecoder_output shape: {gdecoder_output.shape}")
-            local_decoder_input = torch.cat([gdecoder_output, future_covariate], dim=2)
-            print(f"local_decoder_input shape: {local_decoder_input.shape}")
-            local_decoder_output = ldecoder(local_decoder_input)
-            
-            # Tính loss
-            loss = calc_loss(encoder_input, future_covariate, target, 
-                           encoder, gdecoder, ldecoder, device)
-            
-            # Backward pass
+
+            # Forward encoder
+            enc_hs = encoder(encoder_input)  # [batch_size, context_size, hidden_size]
+
+            # Lấy hidden cuối cùng của encoder
+            enc_hs_last = enc_hs[:, -1:, :]  # [batch_size, 1, hidden_size]
+            # Lặp lại hidden cho mỗi bước dự báo
+            enc_hs_repeated = enc_hs_last.repeat(1, future_covariate.shape[1], 1)  # [batch_size, horizon_size, hidden_size]
+
+            # Ghép với future_covariate
+            hidden_and_covariate = torch.cat([enc_hs_repeated, future_covariate], dim=2)  # [batch_size, horizon_size, hidden_size+num_features]
+
+            # Global decoder
+            gdecoder_output = gdecoder(hidden_and_covariate)  # [batch_size, horizon_size, ...]
+            # (Tùy vào thiết kế decoder, có thể cần concat thêm future_covariate)
+
+            # Local decoder (nếu cần)
+            # local_decoder_input = torch.cat([gdecoder_output, future_covariate], dim=2)
+            # local_decoder_output = ldecoder(local_decoder_input)
+
+            # Tính loss (giả sử bạn có hàm loss phù hợp)
+            loss = calc_loss(encoder_input, future_covariate, target, encoder, gdecoder, ldecoder, device)
+
             loss.backward()
-            
-            # Update parameters
             encoder_optimizer.step()
             gdecoder_optimizer.step()
             ldecoder_optimizer.step()
-            
-            # Tính toán loss
-            batch_size = encoder_input.shape[0]
-            seq_len = encoder_input.shape[1]
-            horizon_size = future_covariate.shape[-1]
-            total_samples += batch_size * seq_len * horizon_size
+
             epoch_loss_sum += loss.item()
-        
-        # Tính loss trung bình
-        epoch_loss_mean = epoch_loss_sum / total_samples
-        
-        # In kết quả
-        if (epoch + 1) % 5 == 0:
-            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss_mean:.4f}")
+            total_samples += encoder_input.shape[0]
+
+        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss_sum/total_samples:.4f}")
 
 def calculate_metrics(y_true, y_pred):
     """
