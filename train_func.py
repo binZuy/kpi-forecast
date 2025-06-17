@@ -26,11 +26,10 @@ def calc_loss(cur_series_covariate_tensor : torch.Tensor,
     gdecoder.to(device)
     ldecoder.to(device)
 
-    cur_series_covariate_tensor = cur_series_covariate_tensor.permute(1,0,2) #[seq_len, batch_size, 1+covariate_size]
-    next_covariate_tensor = next_covariate_tensor.permute(1,0,2) #[seq_len, batch_size, covariate_size * horizon_size]
-    cur_real_vals_tensor = cur_real_vals_tensor.permute(1,0,2) #[seq_len, batch_size, horizon_size]
+    # cur_series_covariate_tensor = cur_series_covariate_tensor.permute(1,0,2) #[seq_len, batch_size, 1+covariate_size]
+    # next_covariate_tensor = next_covariate_tensor.permute(1,0,2) #[seq_len, batch_size, covariate_size * horizon_size]
+    # cur_real_vals_tensor = cur_real_vals_tensor.permute(1,0,2) #[seq_len, batch_size, horizon_size]
     enc_hs = encoder(cur_series_covariate_tensor) #[seq_len, batch_size, hidden_size]
-    hidden_and_covariate = torch.cat([enc_hs, next_covariate_tensor], dim=2) #[seq_len, batch_size, hidden_size+covariate_size * horizon_size]
     gdecoder_output = gdecoder(enc_hs, next_covariate_tensor)
 
     context_size = ldecoder.context_size
@@ -91,7 +90,7 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
             enc_hs_repeated = enc_hs_last.repeat(1, future_covariate.shape[1], 1)  # [batch_size, horizon_size, hidden_size]
 
             # Ghép với future_covariate
-            hidden_and_covariate = torch.cat([enc_hs_repeated, future_covariate], dim=2)  # [batch_size, horizon_size, hidden_size+num_features]
+            # hidden_and_covariate = torch.cat([enc_hs_repeated, future_covariate], dim=2)  # [batch_size, horizon_size, hidden_size+num_features]
 
             # Global decoder
             gdecoder_output = gdecoder(enc_hs, future_covariate)

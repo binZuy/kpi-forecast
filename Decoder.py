@@ -19,8 +19,10 @@ class GlobalDecoder(nn.Module):
         self.horizon_size = horizon_size
         self.context_size = context_size
 
-        self.linear1 = nn.Linear(in_features= hidden_size + covariate_size*horizon_size, 
-                                out_features= horizon_size*hidden_size*3)
+        self.linear1 = nn.Linear(
+            in_features=context_size * hidden_size + horizon_size * covariate_size,
+            out_features=horizon_size * hidden_size * 3
+        )
         
         self.linear2 = nn.Linear(in_features= horizon_size*hidden_size*3, 
                                 out_features= horizon_size*hidden_size*2)
