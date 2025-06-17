@@ -31,7 +31,7 @@ def calc_loss(cur_series_covariate_tensor : torch.Tensor,
     cur_real_vals_tensor = cur_real_vals_tensor.permute(1,0,2) #[seq_len, batch_size, horizon_size]
     enc_hs = encoder(cur_series_covariate_tensor) #[seq_len, batch_size, hidden_size]
     hidden_and_covariate = torch.cat([enc_hs, next_covariate_tensor], dim=2) #[seq_len, batch_size, hidden_size+covariate_size * horizon_size]
-    gdecoder_output = gdecoder(hidden_and_covariate) #[seq_len, batch_size, (horizon_size+1)*context_size]
+    gdecoder_output = gdecoder(enc_hs, next_covariate_tensor)
 
     context_size = ldecoder.context_size
     
@@ -94,8 +94,7 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
             hidden_and_covariate = torch.cat([enc_hs_repeated, future_covariate], dim=2)  # [batch_size, horizon_size, hidden_size+num_features]
 
             # Global decoder
-            gdecoder_output = gdecoder(hidden_and_covariate)  # [batch_size, horizon_size, ...]
-            # (Tùy vào thiết kế decoder, có thể cần concat thêm future_covariate)
+            gdecoder_output = gdecoder(enc_hs, future_covariate)
 
             # Local decoder (nếu cần)
             # local_decoder_input = torch.cat([gdecoder_output, future_covariate], dim=2)
