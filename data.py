@@ -162,7 +162,7 @@ class MQRNN_Dataset(torch.utils.data.Dataset):
         print(f"Shape của cur_real_vals_tensor: {cur_real_vals_tensor.shape}")
         
         return cur_series_covariate_tensor, next_covariate_tensor, cur_real_vals_tensor
-    
+
 def load_and_preprocess_data(data_path='./data/rossmann-store-sales/'):
     """
     Load và xử lý dữ liệu từ các file CSV
@@ -216,8 +216,8 @@ def create_mqrnn_dataset(df, target_col='Sales', covariate_cols=None):
     """
     if covariate_cols is None:
         covariate_cols = ['Year', 'Month', 'Day', 'DayOfWeek', 'WeekOfYear',
-            'CompetitionDistance', 'CompetitionOpenSinceMonth',
-            'CompetitionOpenSinceYear', 'Promo2SinceWeek', 'Promo2SinceYear',
+                         'CompetitionDistance', 'CompetitionOpenSinceMonth',
+                         'CompetitionOpenSinceYear', 'Promo2SinceWeek', 'Promo2SinceYear',
             'Promo', 'StateHoliday', 'SchoolHoliday', 'Open', 'SalePerCustomer']
     
     # Tách target và covariates
