@@ -17,7 +17,7 @@ class Encoder(nn.Module):
                 layer_size:int, 
                 by_direction:bool,
                 device):
-        super(Encoder, self).__init__()
+        super().__init__()
         self.horizon_size =horizon_size
         self.covariate_size = covariate_size
         self.hidden_size = hidden_size

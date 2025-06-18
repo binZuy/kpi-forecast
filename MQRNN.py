@@ -60,6 +60,10 @@ class MQRNN(object):
         )
         
         # Chuyển model sang device và double precision
+        self.encoder = self.encoder.to(device)
+        self.gdecoder = self.gdecoder.to(device)
+        self.ldecoder = self.ldecoder.to(device)
+        
         self.encoder.double()
         self.gdecoder.double()
         self.ldecoder.double()
