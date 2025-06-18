@@ -70,14 +70,8 @@ class LocalDecoder(nn.Module):
         self.activation = nn.ReLU()
     
     def forward(self,input):
-        print(f"[DEBUG] Input to LocalDecoder.linear1: {input.shape}")
         layer1_output = self.linear1(input)
-        print(f"[DEBUG] Output from LocalDecoder.linear1: {layer1_output.shape}")
-
         layer1_output = self.activation(layer1_output)
-        print(f"[DEBUG] Input to LocalDecoder.linear2: {layer1_output.shape}")
         layer2_output = self.linear2(layer1_output)
-        print(f"[DEBUG] Output from LocalDecoder.linear2: {layer2_output.shape}")
-
         layer2_output = self.activation(layer2_output)
         return layer2_output
