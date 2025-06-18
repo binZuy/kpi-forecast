@@ -12,13 +12,23 @@ def calc_loss(local_decoder_output, target, quantiles):
     batch_size, output_dim = local_decoder_output.shape
     horizon_size = target.shape[1]
     quantile_size = len(quantiles)
+    
     # Reshape lại nếu cần
     local_decoder_output = local_decoder_output.view(batch_size, horizon_size, quantile_size)
+    
     total_loss = 0.0
     for i, q in enumerate(quantiles):
         errors = target - local_decoder_output[:, :, i]
         cur_loss = torch.max((q-1)*errors, q*errors)
         total_loss += torch.sum(cur_loss)
+    
+    # Thêm debug để kiểm tra
+    if torch.isnan(total_loss) or torch.isinf(total_loss):
+        print("WARNING: Loss is NaN or Inf!")
+        print("local_decoder_output min/max:", local_decoder_output.min().item(), local_decoder_output.max().item())
+        print("target min/max:", target.min().item(), target.max().item())
+        print("errors min/max:", errors.min().item(), errors.max().item())
+    
     return total_loss
 
 
@@ -36,7 +46,7 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
         epoch_loss_sum = 0.0
         total_samples = 0
 
-        for batch in data_loader:
+        for batch_idx, batch in enumerate(data_loader):
             # unpack batch
             encoder_input, future_covariate, target = batch
             # encoder_input: [batch_size, context_size, 1+num_features]
@@ -69,15 +79,36 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
             # Tính loss
             loss = calc_loss(local_decoder_output, target, ldecoder.quantiles)
 
+            # Debug: Kiểm tra gradients
+            if batch_idx == 0 and epoch % 5 == 0:
+                print(f"Epoch {epoch}, Batch 0:")
+                print(f"  Target min/max: {target.min().item():.4f}/{target.max().item():.4f}")
+                print(f"  Output min/max: {local_decoder_output.min().item():.4f}/{local_decoder_output.max().item():.4f}")
+                print(f"  Loss: {loss.item():.4f}")
+
             loss.backward()
+            
+            # Kiểm tra gradients
+            if batch_idx == 0 and epoch % 5 == 0:
+                total_grad_norm = 0
+                for name, param in encoder.named_parameters():
+                    if param.grad is not None:
+                        total_grad_norm += param.grad.norm().item()
+                print(f"  Total encoder grad norm: {total_grad_norm:.6f}")
+
             encoder_optimizer.step()
             gdecoder_optimizer.step()
             ldecoder_optimizer.step()
 
             epoch_loss_sum += loss.item()
             total_samples += encoder_input.shape[0]
+            
         if (epoch+1)%5 == 0:
-            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss_sum/total_samples:.4f}")
+            avg_loss = epoch_loss_sum/total_samples
+            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
+            
+            # Kiểm tra learning rate
+            print(f"  Learning rate: {encoder_optimizer.param_groups[0]['lr']:.6f}")
 
 def calculate_metrics(y_true, y_pred):
     """
