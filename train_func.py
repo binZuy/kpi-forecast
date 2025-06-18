@@ -45,22 +45,22 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
         ldecoder.train()
         epoch_loss_sum = 0.0
         total_samples = 0
-
+        
         for batch_idx, batch in enumerate(data_loader):
             # unpack batch
             encoder_input, future_covariate, target = batch
             # encoder_input: [batch_size, context_size, 1+num_features]
             # future_covariate: [batch_size, horizon_size, num_features]
             # target: [batch_size, horizon_size]
-
+            
             encoder_input = encoder_input.to(device)
             future_covariate = future_covariate.to(device)
             target = target.to(device)
-
+            
             encoder_optimizer.zero_grad()
             gdecoder_optimizer.zero_grad()
             ldecoder_optimizer.zero_grad()
-
+            
             # Forward encoder
             enc_hs = encoder(encoder_input)  # [batch_size, context_size, hidden_size]
 
@@ -75,6 +75,11 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
                 print(f"  future_covariate_flat shape: {future_covariate_flat.shape}")
                 print(f"  enc_hs_flat min/max: {enc_hs_flat.min().item():.4f}/{enc_hs_flat.max().item():.4f}")
                 print(f"  future_covariate_flat min/max: {future_covariate_flat.min().item():.4f}/{future_covariate_flat.max().item():.4f}")
+                
+                # Kiểm tra xem có giá trị quá lớn không
+                if future_covariate_flat.max().item() > 100:
+                    print(f"  WARNING: future_covariate_flat có giá trị lớn: {future_covariate_flat.max().item():.4f}")
+                    print(f"  future_covariate_flat std: {future_covariate_flat.std().item():.4f}")
 
             # Concat để tạo input cho GlobalDecoder
             gdecoder_input = torch.cat([enc_hs_flat, future_covariate_flat], dim=1)  # [batch_size, ...]
@@ -100,17 +105,27 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
                 print(f"  local_decoder_input min/max: {local_decoder_input.min().item():.4f}/{local_decoder_input.max().item():.4f}")
             
             local_decoder_output = ldecoder(local_decoder_input)
-
+            
             # Debug: Kiểm tra output của LocalDecoder
             if batch_idx == 0 and epoch % 5 == 0:
                 print(f"  local_decoder_output shape: {local_decoder_output.shape}")
                 print(f"  local_decoder_output min/max: {local_decoder_output.min().item():.4f}/{local_decoder_output.max().item():.4f}")
                 print(f"  Target min/max: {target.min().item():.4f}/{target.max().item():.4f}")
-                print(f"  Loss: {loss.item():.4f}")
-                print("  " + "="*50)
 
             # Tính loss
             loss = calc_loss(local_decoder_output, target, ldecoder.quantiles)
+            
+            # Kiểm tra loss có hợp lệ không
+            if torch.isnan(loss) or torch.isinf(loss):
+                print(f"ERROR: Loss is {loss.item()} at epoch {epoch}, batch {batch_idx}")
+                print(f"  local_decoder_output min/max: {local_decoder_output.min().item():.4f}/{local_decoder_output.max().item():.4f}")
+                print(f"  target min/max: {target.min().item():.4f}/{target.max().item():.4f}")
+                continue  # Bỏ qua batch này
+            
+            # Debug: In loss sau khi đã tính toán
+            if batch_idx == 0 and epoch % 5 == 0:
+                print(f"  Loss: {loss.item():.4f}")
+                print("  " + "="*50)
 
             # Debug: Kiểm tra gradients
             if batch_idx == 0 and epoch % 5 == 0:
@@ -119,6 +134,14 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
                     if param.grad is not None:
                         total_grad_norm += param.grad.norm().item()
                 print(f"  Total encoder grad norm: {total_grad_norm:.6f}")
+                
+                # Kiểm tra gradient explosion
+                if total_grad_norm > 100:
+                    print(f"  WARNING: Gradient norm too large: {total_grad_norm:.6f}")
+                    # Clip gradients
+                    torch.nn.utils.clip_grad_norm_(encoder.parameters(), max_norm=1.0)
+                    torch.nn.utils.clip_grad_norm_(gdecoder.parameters(), max_norm=1.0)
+                    torch.nn.utils.clip_grad_norm_(ldecoder.parameters(), max_norm=1.0)
 
             loss.backward()
             
@@ -133,14 +156,14 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
             encoder_optimizer.step()
             gdecoder_optimizer.step()
             ldecoder_optimizer.step()
-
+            
             epoch_loss_sum += loss.item()
             total_samples += encoder_input.shape[0]
-            
+        
         if (epoch+1)%5 == 0:
             avg_loss = epoch_loss_sum/total_samples
             print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
-            
+        
             # Kiểm tra learning rate
             print(f"  Learning rate: {encoder_optimizer.param_groups[0]['lr']:.6f}")
 

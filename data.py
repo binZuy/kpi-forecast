@@ -17,6 +17,15 @@ class MQRNN_Dataset(Dataset):
         self.horizon_size = horizon_size 
         self.device = device
 
+        # Chuẩn hóa target nếu chưa được chuẩn hóa
+        target_col = target_df.columns[0]
+        if target_df[target_col].std() > 10:  # Nếu chưa được chuẩn hóa
+            mean = target_df[target_col].mean()
+            std = target_df[target_col].std()
+            if std != 0:
+                target_df = target_df.copy()
+                target_df[target_col] = (target_df[target_col] - mean) / std
+
         target_arr = target_df.values  # [N, 1]
         covariate_arr = covariate_df.values  # [N, num_features]
 
@@ -208,8 +217,8 @@ def create_mqrnn_dataset(df, target_col='Sales', covariate_cols=None):
     """
     if covariate_cols is None:
         covariate_cols = ['Year', 'Month', 'Day', 'DayOfWeek', 'WeekOfYear',
-            'CompetitionDistance', 'CompetitionOpenSinceMonth',
-            'CompetitionOpenSinceYear', 'Promo2SinceWeek', 'Promo2SinceYear',
+                         'CompetitionDistance', 'CompetitionOpenSinceMonth',
+                         'CompetitionOpenSinceYear', 'Promo2SinceWeek', 'Promo2SinceYear',
             'Promo', 'StateHoliday', 'SchoolHoliday', 'Open', 'SalePerCustomer']
 
     # Tách target và covariates
