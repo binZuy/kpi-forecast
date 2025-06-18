@@ -27,7 +27,7 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
     gdecoder_optimizer = torch.optim.Adam(gdecoder.parameters(), lr=lr)
     ldecoder_optimizer = torch.optim.Adam(ldecoder.parameters(), lr=lr)
 
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+    data_loader = DataLoader(dataset, batch_size=batch_size, num_workers=0)
 
     for epoch in range(num_epochs):
         encoder.train()

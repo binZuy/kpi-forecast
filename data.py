@@ -135,20 +135,16 @@ class MQRNN_Dataset(torch.utils.data.Dataset):
         
         # Lấy chuỗi thời gian hiện tại (input cho encoder)
         cur_series = self.series_df.iloc[idx:idx+self.context_size, 0].values.astype(np.float64)
-        print(f"Shape của cur_series: {cur_series.shape}")
         
         # Lấy covariates cho encoder
         cur_covariate = self.covariate_df.iloc[idx:idx+self.context_size, :].values.astype(np.float64)
-        print(f"Shape của cur_covariate: {cur_covariate.shape}")
         
         # Lấy covariates cho decoder (tương lai)
         next_covariate = self.covariate_df.iloc[idx+self.context_size:idx+self.context_size+self.horizon_size, :].values.astype(np.float64)
         next_covariate_tensor = torch.tensor(next_covariate, dtype=torch.float64)  # [horizon_size, num_features]
-        print(f"Shape của next_covariate_tensor: {next_covariate_tensor.shape}")
         
         # Lấy giá trị thực tế cho tương lai (target)
         real_vals = self.series_df.iloc[idx+self.context_size:idx+self.context_size+self.horizon_size, 0].values.astype(np.float64)
-        print(f"Shape của real_vals: {real_vals.shape}")
         
         # Chuyển đổi sang tensor
         cur_series_tensor = torch.tensor(cur_series, dtype=torch.float64).unsqueeze(1)  # [context_size, 1]
@@ -156,10 +152,8 @@ class MQRNN_Dataset(torch.utils.data.Dataset):
         
         # Ghép series và covariates cho encoder
         cur_series_covariate_tensor = torch.cat([cur_series_tensor, cur_covariate_tensor], dim=1)  # [context_size, 1+num_features]
-        print(f"Shape của cur_series_covariate_tensor: {cur_series_covariate_tensor.shape}")
         
         cur_real_vals_tensor = torch.tensor(real_vals, dtype=torch.float64)  # [horizon_size]
-        print(f"Shape của cur_real_vals_tensor: {cur_real_vals_tensor.shape}")
         
         return cur_series_covariate_tensor, next_covariate_tensor, cur_real_vals_tensor
 
