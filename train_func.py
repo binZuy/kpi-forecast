@@ -6,49 +6,19 @@ from torch.utils.data import DataLoader
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
-def calc_loss(cur_series_covariate_tensor : torch.Tensor, 
-            next_covariate_tensor: torch.Tensor,
-            cur_real_vals_tensor: torch.Tensor, 
-            encoder: Encoder,
-            gdecoder: GlobalDecoder,
-            ldecoder: LocalDecoder,
-            device):
-    loss = torch.tensor([0.0], device=device)
-
-    cur_series_covariate_tensor = cur_series_covariate_tensor.double() #[batch_size, seq_len, 1+covariate_size]
-    next_covariate_tensor = next_covariate_tensor.double() # [batch_size, seq_len, covariate_size * horizon_size]
-    cur_real_vals_tensor = cur_real_vals_tensor.double() # [batch_size, seq_len, horizon_size]
-
-    cur_series_covariate_tensor = cur_series_covariate_tensor.to(device)
-    next_covariate_tensor = next_covariate_tensor.to(device)
-    cur_real_vals_tensor = cur_real_vals_tensor.to(device)
-    encoder.to(device)
-    gdecoder.to(device)
-    ldecoder.to(device)
-
-    # cur_series_covariate_tensor = cur_series_covariate_tensor.permute(1,0,2) #[seq_len, batch_size, 1+covariate_size]
-    # next_covariate_tensor = next_covariate_tensor.permute(1,0,2) #[seq_len, batch_size, covariate_size * horizon_size]
-    # cur_real_vals_tensor = cur_real_vals_tensor.permute(1,0,2) #[seq_len, batch_size, horizon_size]
-    enc_hs = encoder(cur_series_covariate_tensor) #[seq_len, batch_size, hidden_size]
-    gdecoder_output = gdecoder(enc_hs, next_covariate_tensor)
-
-    context_size = ldecoder.context_size
-    
-    quantile_size = ldecoder.quantile_size
-    horizon_size = encoder.horizon_size
-    total_loss = torch.tensor([0.0],device=device)
-
-    local_decoder_input = torch.cat([gdecoder_output, next_covariate_tensor], dim=1) #[seq_len, batch_size,(horizon_size+1)*context_size + covariate_size * horizon_size]
-    local_decoder_output = ldecoder( local_decoder_input) #[seq_len, batch_size, horizon_size* quantile_size]
-    seq_len = local_decoder_output.shape[0]
-    batch_size = local_decoder_output.shape[1]
-    
-    local_decoder_output = local_decoder_output.view(seq_len, batch_size, horizon_size, quantile_size) #[[seq_len, batch_size, horizon_size, quantile_size]]
-    for i in range(quantile_size):
-      p = ldecoder.quantiles[i]
-      errors = cur_real_vals_tensor - local_decoder_output[:,:,:,i]
-      cur_loss = torch.max( (p-1)*errors, p*errors ) # CAUTION
-      total_loss += torch.sum(cur_loss)
+def calc_loss(local_decoder_output, target, quantiles):
+    # local_decoder_output: [batch_size, horizon_size * quantile_size]
+    # target: [batch_size, horizon_size]
+    batch_size, output_dim = local_decoder_output.shape
+    horizon_size = target.shape[1]
+    quantile_size = len(quantiles)
+    # Reshape lại nếu cần
+    local_decoder_output = local_decoder_output.view(batch_size, horizon_size, quantile_size)
+    total_loss = 0.0
+    for i, q in enumerate(quantiles):
+        errors = target - local_decoder_output[:, :, i]
+        cur_loss = torch.max((q-1)*errors, q*errors)
+        total_loss += torch.sum(cur_loss)
     return total_loss
 
 
@@ -84,23 +54,20 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
             # Forward encoder
             enc_hs = encoder(encoder_input)  # [batch_size, context_size, hidden_size]
 
-            # Lấy hidden cuối cùng của encoder
-            enc_hs_last = enc_hs[:, -1:, :]  # [batch_size, 1, hidden_size]
-            # Lặp lại hidden cho mỗi bước dự báo
-            enc_hs_repeated = enc_hs_last.repeat(1, future_covariate.shape[1], 1)  # [batch_size, horizon_size, hidden_size]
+            batch_size = enc_hs.shape[0]
+            enc_hs_flat = enc_hs.reshape(batch_size, -1)  # [batch_size, context_size * hidden_size]
+            future_covariate_flat = future_covariate.reshape(batch_size, -1)  # [batch_size, horizon_size * covariate_size]
 
-            # Ghép với future_covariate
-            # hidden_and_covariate = torch.cat([enc_hs_repeated, future_covariate], dim=2)  # [batch_size, horizon_size, hidden_size+num_features]
+            # Concat để tạo input cho GlobalDecoder
+            gdecoder_input = torch.cat([enc_hs_flat, future_covariate_flat], dim=1)  # [batch_size, ...]
+            gdecoder_output = gdecoder(gdecoder_input)  # [batch_size, ...]
+            
+            # Flatten future_covariate lại nếu cần cho local decoder
+            local_decoder_input = torch.cat([gdecoder_output, future_covariate_flat], dim=1)
+            local_decoder_output = ldecoder(local_decoder_input)
 
-            # Global decoder
-            gdecoder_output = gdecoder(enc_hs, future_covariate)
-
-            # Local decoder (nếu cần)
-            # local_decoder_input = torch.cat([gdecoder_output, future_covariate], dim=2)
-            # local_decoder_output = ldecoder(local_decoder_input)
-
-            # Tính loss (giả sử bạn có hàm loss phù hợp)
-            loss = calc_loss(encoder_input, future_covariate, target, encoder, gdecoder, ldecoder, device)
+            # Tính loss
+            loss = calc_loss(local_decoder_output, target, ldecoder.quantiles)
 
             loss.backward()
             encoder_optimizer.step()

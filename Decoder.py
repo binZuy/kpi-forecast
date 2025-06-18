@@ -31,27 +31,15 @@ class GlobalDecoder(nn.Module):
                                 out_features= (horizon_size+1)*context_size)
 
         self.activation = nn.ReLU()
-    def forward(self, enc_hs, future_covariate):
-        batch_size = enc_hs.shape[0]
-        enc_hs_flat = enc_hs.reshape(batch_size, -1)  # [batch, context_size*hidden_size]
-        future_covariate_flat = future_covariate.reshape(batch_size, -1)  # [batch, horizon_size*covariate_size]
-        x = torch.cat([enc_hs_flat, future_covariate_flat], dim=1)  # [batch, context_size*hidden_size + horizon_size*covariate_size]
-        print(f"[DEBUG] Input to GlobalDecoder.linear1: {x.shape}")
+    def forward(self, x):
+        # x: [batch_size, feature]
         out = self.linear1(x)
-        print(f"[DEBUG] Output from GlobalDecoder.linear1: {out.shape}")
-
         out = self.activation(out)
-        print(f"[DEBUG] Input to GlobalDecoder.linear2: {out.shape}")
-        layer2_output = self.linear2(out)
-        print(f"[DEBUG] Output from GlobalDecoder.linear2: {layer2_output.shape}")
-
-        layer2_output = self.activation(layer2_output)
-        print(f"[DEBUG] Input to GlobalDecoder.linear3: {layer2_output.shape}")
-        layer3_output = self.linear3(layer2_output)
-        print(f"[DEBUG] Output from GlobalDecoder.linear3: {layer3_output.shape}")
-
-        layer3_output = self.activation(layer3_output)
-        return layer3_output
+        out = self.linear2(out)
+        out = self.activation(out)
+        out = self.linear3(out)
+        out = self.activation(out)
+        return out
 
 
 class LocalDecoder(nn.Module):
