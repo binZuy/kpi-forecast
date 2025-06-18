@@ -31,15 +31,17 @@ class GlobalDecoder(nn.Module):
                                 out_features= (horizon_size+1)*context_size)
 
         self.activation = nn.ReLU()
-    def forward(self, x):
+    def forward(self, input):
         # x: [batch_size, feature]
-        out = self.linear1(x)
-        out = self.activation(out)
-        out = self.linear2(out)
-        out = self.activation(out)
-        out = self.linear3(out)
-        out = self.activation(out)
-        return out
+        layer1_output = self.linear1(input)
+        layer1_output = self.activation(layer1_output)
+
+        layer2_output = self.linear2(layer1_output)
+        layer2_output = self.activation(layer2_output)
+
+        layer3_output = self.linear3(layer2_output)
+        layer3_output = self.activation(layer3_output)
+        return layer3_output
 
 
 class LocalDecoder(nn.Module):

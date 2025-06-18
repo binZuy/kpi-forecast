@@ -43,9 +43,9 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
             # future_covariate: [batch_size, horizon_size, num_features]
             # target: [batch_size, horizon_size]
 
-            encoder_input = encoder_input.to(device).double()
-            future_covariate = future_covariate.to(device).double()
-            target = target.to(device).double()
+            encoder_input = encoder_input.to(device)
+            future_covariate = future_covariate.to(device)
+            target = target.to(device)
 
             encoder_optimizer.zero_grad()
             gdecoder_optimizer.zero_grad()
@@ -76,8 +76,8 @@ def train_fn(encoder, gdecoder, ldecoder, dataset, lr, batch_size, num_epochs, d
 
             epoch_loss_sum += loss.item()
             total_samples += encoder_input.shape[0]
-
-        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss_sum/total_samples:.4f}")
+        if (epoch+1)%5 == 0:
+            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss_sum/total_samples:.4f}")
 
 def calculate_metrics(y_true, y_pred):
     """

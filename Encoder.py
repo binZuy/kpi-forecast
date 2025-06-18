@@ -24,6 +24,7 @@ class Encoder(nn.Module):
         self.layer_size = layer_size
         self.by_direction = by_direction
         self.dropout = dropout
+        self.device = device
         self.LSTM = nn.LSTM(input_size= covariate_size+1, 
                             hidden_size=hidden_size, 
                             num_layers=layer_size, 
@@ -35,7 +36,8 @@ class Encoder(nn.Module):
                 torch.nn.init.orthogonal_(param.data)
             else:
                 torch.nn.init.normal_(param.data)
-    
+        self.LSTM.to(device)
+
     def forward(self, input):
         """
         For the RNN(LSTM), the input shape is [seq_len,batch_size,input_size]

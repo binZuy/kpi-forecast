@@ -4,205 +4,203 @@ import torch
 from torch.utils.data import Dataset, DataLoader, random_split
 from sklearn.model_selection import TimeSeriesSplit
 
-class MQRNN_Dataset(torch.utils.data.Dataset):
-    def __init__(self,
-                target_df: pd.DataFrame,
-                covariate_df: pd.DataFrame,
-                horizon_size: int,
-                quantile_size: int,
-                context_size: int):
+class MQRNN_Dataset(Dataset):
+    def __init__(self, target_df, covariate_df, context_size, horizon_size, device='cpu'):
         """
-        Parameters:
-        -----------
-        target_df: pd.DataFrame
-            DataFrame chứa giá trị target (Sales) với index là Date
-        covariate_df: pd.DataFrame
-            DataFrame chứa các covariates với index là Date
-        horizon_size: int
-            Kích thước cửa sổ dự báo
-        quantile_size: int
-            Số lượng quantiles cần dự báo
+        target_df: DataFrame với 1 cột target, index là thời gian
+        covariate_df: DataFrame các covariate, index là thời gian
+        context_size: số bước quá khứ (input window)
+        horizon_size: số bước dự báo (output window)
+        device: thiết bị (cpu hoặc cuda)
         """
-        print("\n=== Khởi tạo MQRNN_Dataset ===")
-        print(f"Shape của target_df: {target_df.shape}")
-        print(f"Shape của covariate_df: {covariate_df.shape}")
-        print(f"horizon_size: {horizon_size}")
-        print(f"quantile_size: {quantile_size}")
-
-        self.series_df = target_df
-        self.covariate_df = covariate_df.copy()
-        
-        # Xử lý các cột categorical
-        self._process_categorical_columns()
-        
-        self.horizon_size = horizon_size
-        self.quantile_size = quantile_size
         self.context_size = context_size
+        self.horizon_size = horizon_size 
+        self.device = device
 
-        # Calculate the number of possible sequences
-        self.seq_len = self.series_df.shape[0] - self.context_size - self.horizon_size
-        print(f"Số lượng mẫu có thể có: {self.seq_len}")
-        print(f"Số lượng features sau khi xử lý: {self.covariate_df.shape[1]}")
+        target_arr = target_df.values  # [N, 1]
+        covariate_arr = covariate_df.values  # [N, num_features]
 
-        self.covariate_size = self.covariate_df.shape[1]
-        print(f"Số lượng covariates: {self.covariate_size}")
+        num_samples = len(target_df) - context_size - horizon_size + 1
 
-        print("=== Hoàn thành khởi tạo ===")
-    
-    def _process_categorical_columns(self):
-        """Xử lý các cột categorical trong covariates"""
-        print("\nĐang xử lý các cột categorical...")
-        
-        # Xử lý StoreType
-        if 'StoreType' in self.covariate_df.columns:
-            print("Xử lý StoreType...")
-            # Chuyển đổi string thành số
-            store_type_map = {'a': 0, 'b': 1, 'c': 2, 'd': 3}
-            self.covariate_df['StoreType'] = self.covariate_df['StoreType'].map(store_type_map)
-            # One-hot encoding
-            store_type_dummies = pd.get_dummies(self.covariate_df['StoreType'], prefix='StoreType')
-            self.covariate_df = pd.concat([self.covariate_df.drop('StoreType', axis=1), store_type_dummies], axis=1)
-            print(f"Số cột sau khi xử lý StoreType: {self.covariate_df.shape[1]}")
-        
-        # Xử lý Assortment
-        if 'Assortment' in self.covariate_df.columns:
-            print("Xử lý Assortment...")
-            # Chuyển đổi string thành số
-            assortment_map = {'a': 0, 'b': 1, 'c': 2}
-            self.covariate_df['Assortment'] = self.covariate_df['Assortment'].map(assortment_map)
-            # One-hot encoding
-            assortment_dummies = pd.get_dummies(self.covariate_df['Assortment'], prefix='Assortment')
-            self.covariate_df = pd.concat([self.covariate_df.drop('Assortment', axis=1), assortment_dummies], axis=1)
-            print(f"Số cột sau khi xử lý Assortment: {self.covariate_df.shape[1]}")
-        
-        # Xử lý PromoInterval
-        if 'PromoInterval' in self.covariate_df.columns:
-            print("Xử lý PromoInterval...")
-            # Chuyển đổi string thành số
-            promo_interval_map = {
-                'Jan,Apr,Jul,Oct': 0,
-                'Feb,May,Aug,Nov': 1,
-                'Mar,Jun,Sept,Dec': 2
-            }
-            self.covariate_df['PromoInterval'] = self.covariate_df['PromoInterval'].map(promo_interval_map)
-            # One-hot encoding
-            promo_interval_dummies = pd.get_dummies(self.covariate_df['PromoInterval'], prefix='PromoInterval')
-            self.covariate_df = pd.concat([self.covariate_df.drop('PromoInterval', axis=1), promo_interval_dummies], axis=1)
-            print(f"Số cột sau khi xử lý PromoInterval: {self.covariate_df.shape[1]}")
-        
-        # Xử lý StateHoliday
-        if 'StateHoliday' in self.covariate_df.columns:
-            print("Xử lý StateHoliday...")
-            # Chuyển đổi string thành số
-            state_holiday_map = {'0': 0, 'a': 1, 'b': 2, 'c': 3, 'd': 4}
-            self.covariate_df['StateHoliday'] = self.covariate_df['StateHoliday'].map(state_holiday_map)
-            # One-hot encoding
-            state_holiday_dummies = pd.get_dummies(self.covariate_df['StateHoliday'], prefix='StateHoliday')
-            self.covariate_df = pd.concat([self.covariate_df.drop('StateHoliday', axis=1), state_holiday_dummies], axis=1)
-            print(f"Số cột sau khi xử lý StateHoliday: {self.covariate_df.shape[1]}")
-        
-        # Xử lý các cột boolean
-        boolean_cols = ['Promo', 'Open', 'SchoolHoliday']
-        for col in boolean_cols:
-            if col in self.covariate_df.columns:
-                self.covariate_df[col] = self.covariate_df[col].astype(int)
-        
-        # Chuẩn hóa các cột số
-        numeric_cols = self.covariate_df.select_dtypes(include=[np.number]).columns
-        for col in numeric_cols:
-            if col not in ['Promo', 'Open', 'SchoolHoliday']:
-                mean = self.covariate_df[col].mean()
-                std = self.covariate_df[col].std()
-                if std != 0:
-                    self.covariate_df[col] = (self.covariate_df[col] - mean) / std
-        
-        # Chuyển đổi tất cả các cột sang float64
-        self.covariate_df = self.covariate_df.astype(np.float64)
-        
-        print("\nCác cột sau khi xử lý:", self.covariate_df.columns.tolist())
-        print(f"Số lượng features: {self.covariate_df.shape[1]}")
-        print(f"self.covariate_df.shape[0] : {self.covariate_df.shape[0]}")
+        # Precompute toàn bộ sample
+        self.inputs = np.zeros((num_samples, context_size, 1), dtype=np.float64)
+        self.past_covariates = np.zeros((num_samples, context_size, covariate_arr.shape[1]), dtype=np.float64)
+        self.future_covariates = np.zeros((num_samples, horizon_size, covariate_arr.shape[1]), dtype=np.float64)
+        self.targets = np.zeros((num_samples, horizon_size), dtype=np.float64)
+
+        for i in range(num_samples):
+            self.inputs[i] = target_arr[i:i+context_size]
+            self.past_covariates[i] = covariate_arr[i:i+context_size]
+            self.future_covariates[i] = covariate_arr[i+context_size:i+context_size+horizon_size]
+            self.targets[i] = target_arr[i+context_size:i+context_size+horizon_size, 0]
+
     def __len__(self):
-        # The number of items is the number of possible sequences
-        return self.seq_len
+        return self.inputs.shape[0]
 
     def __getitem__(self, idx):
-        print(f"\n=== Xử lý item {idx} ===")
-        
-        # Kiểm tra index hợp lệ
-        if idx < 0 or idx >= self.seq_len:
-            raise IndexError(f"Index {idx} nằm ngoài phạm vi [0, {self.seq_len-1}]")
-        
-        # Lấy chuỗi thời gian hiện tại (input cho encoder)
-        cur_series = self.series_df.iloc[idx:idx+self.context_size, 0].values.astype(np.float64)
-        
-        # Lấy covariates cho encoder
-        cur_covariate = self.covariate_df.iloc[idx:idx+self.context_size, :].values.astype(np.float64)
-        
-        # Lấy covariates cho decoder (tương lai)
-        next_covariate = self.covariate_df.iloc[idx+self.context_size:idx+self.context_size+self.horizon_size, :].values.astype(np.float64)
-        next_covariate_tensor = torch.tensor(next_covariate, dtype=torch.float64)  # [horizon_size, num_features]
-        
-        # Lấy giá trị thực tế cho tương lai (target)
-        real_vals = self.series_df.iloc[idx+self.context_size:idx+self.context_size+self.horizon_size, 0].values.astype(np.float64)
-        
-        # Chuyển đổi sang tensor
-        cur_series_tensor = torch.tensor(cur_series, dtype=torch.float64).unsqueeze(1)  # [context_size, 1]
-        cur_covariate_tensor = torch.tensor(cur_covariate, dtype=torch.float64)  # [context_size, num_features]
-        
-        # Ghép series và covariates cho encoder
-        cur_series_covariate_tensor = torch.cat([cur_series_tensor, cur_covariate_tensor], dim=1)  # [context_size, 1+num_features]
-        
-        cur_real_vals_tensor = torch.tensor(real_vals, dtype=torch.float64)  # [horizon_size]
-        
-        return cur_series_covariate_tensor, next_covariate_tensor, cur_real_vals_tensor
+        # Ghép input series và covariate cho encoder
+        encoder_input = np.concatenate([self.inputs[idx], self.past_covariates[idx]], axis=1)  # [context_size, 1+num_features]
+        future_covariate = self.future_covariates[idx]  # [horizon_size, num_features]
+        target = self.targets[idx]  # [horizon_size]
+        return (
+            torch.tensor(encoder_input, dtype=torch.float64, device=self.device),
+            torch.tensor(future_covariate, dtype=torch.float64, device=self.device),
+            torch.tensor(target, dtype=torch.float64, device=self.device)
+        )
 
-def load_and_preprocess_data(data_path='./data/rossmann-store-sales/'):
-    """
-    Load và xử lý dữ liệu từ các file CSV
-    """
-    # Đọc dữ liệu
-    train = pd.read_csv(f'{data_path}/train.csv', low_memory=False)
-    test = pd.read_csv(f'{data_path}/test.csv', low_memory=False)
-    store = pd.read_csv(f'{data_path}/store.csv', low_memory=False)
+# class MQRNN_Dataset(torch.utils.data.Dataset):
+#     def __init__(self,
+#                 target_df: pd.DataFrame,
+#                 covariate_df: pd.DataFrame,
+#                 horizon_size: int,
+#                 quantile_size: int,
+#                 context_size: int):
+#         """
+#         Parameters:
+#         -----------
+#         target_df: pd.DataFrame
+#             DataFrame chứa giá trị target (Sales) với index là Date
+#         covariate_df: pd.DataFrame
+#             DataFrame chứa các covariates với index là Date
+#         horizon_size: int
+#             Kích thước cửa sổ dự báo
+#         quantile_size: int
+#             Số lượng quantiles cần dự báo
+#         """
+#         print("\n=== Khởi tạo MQRNN_Dataset ===")
+#         print(f"Shape của target_df: {target_df.shape}")
+#         print(f"Shape của covariate_df: {covariate_df.shape}")
+#         print(f"horizon_size: {horizon_size}")
+#         print(f"quantile_size: {quantile_size}")
 
-    # Xử lý missing values
-    test.fillna(1, inplace=True)
-    store.CompetitionDistance = store.CompetitionDistance.fillna(store.CompetitionDistance.median())
-    store.fillna(0, inplace=True)
+#         self.series_df = target_df
+#         self.covariate_df = covariate_df.copy()
+        
+#         # Xử lý các cột categorical
+#         self._process_categorical_columns()
+        
+#         self.horizon_size = horizon_size
+#         self.quantile_size = quantile_size
+#         self.context_size = context_size
 
-    # Merge với store data
-    train = pd.merge(train, store, on='Store')
-    test = pd.merge(test, store, on='Store')
+#         # Calculate the number of possible sequences
+#         self.seq_len = self.series_df.shape[0] - self.context_size - self.horizon_size
+#         print(f"Số lượng mẫu có thể có: {self.seq_len}")
+#         print(f"Số lượng features sau khi xử lý: {self.covariate_df.shape[1]}")
 
-    # Chuyển đổi Date thành datetime
-    train['Date'] = pd.to_datetime(train['Date'])
-    test['Date'] = pd.to_datetime(test['Date'])
+#         self.covariate_size = self.covariate_df.shape[1]
+#         print(f"Số lượng covariates: {self.covariate_size}")
 
-    # Tạo các feature thời gian
-    for df in [train, test]:
-        df['Year'] = df['Date'].dt.year
-        df['Month'] = df['Date'].dt.month
-        df['Day'] = df['Date'].dt.day
-        df['DayOfWeek'] = df['Date'].dt.dayofweek
-        df['WeekOfYear'] = df['Date'].dt.isocalendar().week.astype(int)
+#         print("=== Hoàn thành khởi tạo ===")
+    
+#     def _process_categorical_columns(self):
+#         """Xử lý các cột categorical trong covariates"""
+#         print("\nĐang xử lý các cột categorical...")
+        
+#         # Xử lý StoreType
+#         if 'StoreType' in self.covariate_df.columns:
+#             print("Xử lý StoreType...")
+#             # Chuyển đổi string thành số
+#             store_type_map = {'a': 0, 'b': 1, 'c': 2, 'd': 3}
+#             self.covariate_df['StoreType'] = self.covariate_df['StoreType'].map(store_type_map)
+#             # One-hot encoding
+#             store_type_dummies = pd.get_dummies(self.covariate_df['StoreType'], prefix='StoreType')
+#             self.covariate_df = pd.concat([self.covariate_df.drop('StoreType', axis=1), store_type_dummies], axis=1)
+#             print(f"Số cột sau khi xử lý StoreType: {self.covariate_df.shape[1]}")
+        
+#         # Xử lý Assortment
+#         if 'Assortment' in self.covariate_df.columns:
+#             print("Xử lý Assortment...")
+#             # Chuyển đổi string thành số
+#             assortment_map = {'a': 0, 'b': 1, 'c': 2}
+#             self.covariate_df['Assortment'] = self.covariate_df['Assortment'].map(assortment_map)
+#             # One-hot encoding
+#             assortment_dummies = pd.get_dummies(self.covariate_df['Assortment'], prefix='Assortment')
+#             self.covariate_df = pd.concat([self.covariate_df.drop('Assortment', axis=1), assortment_dummies], axis=1)
+#             print(f"Số cột sau khi xử lý Assortment: {self.covariate_df.shape[1]}")
+        
+#         # Xử lý PromoInterval
+#         if 'PromoInterval' in self.covariate_df.columns:
+#             print("Xử lý PromoInterval...")
+#             # Chuyển đổi string thành số
+#             promo_interval_map = {
+#                 'Jan,Apr,Jul,Oct': 0,
+#                 'Feb,May,Aug,Nov': 1,
+#                 'Mar,Jun,Sept,Dec': 2
+#             }
+#             self.covariate_df['PromoInterval'] = self.covariate_df['PromoInterval'].map(promo_interval_map)
+#             # One-hot encoding
+#             promo_interval_dummies = pd.get_dummies(self.covariate_df['PromoInterval'], prefix='PromoInterval')
+#             self.covariate_df = pd.concat([self.covariate_df.drop('PromoInterval', axis=1), promo_interval_dummies], axis=1)
+#             print(f"Số cột sau khi xử lý PromoInterval: {self.covariate_df.shape[1]}")
+        
+#         # Xử lý StateHoliday
+#         if 'StateHoliday' in self.covariate_df.columns:
+#             print("Xử lý StateHoliday...")
+#             # Chuyển đổi string thành số
+#             state_holiday_map = {'0': 0, 'a': 1, 'b': 2, 'c': 3, 'd': 4}
+#             self.covariate_df['StateHoliday'] = self.covariate_df['StateHoliday'].map(state_holiday_map)
+#             # One-hot encoding
+#             state_holiday_dummies = pd.get_dummies(self.covariate_df['StateHoliday'], prefix='StateHoliday')
+#             self.covariate_df = pd.concat([self.covariate_df.drop('StateHoliday', axis=1), state_holiday_dummies], axis=1)
+#             print(f"Số cột sau khi xử lý StateHoliday: {self.covariate_df.shape[1]}")
+        
+#         # Xử lý các cột boolean
+#         boolean_cols = ['Promo', 'Open', 'SchoolHoliday']
+#         for col in boolean_cols:
+#             if col in self.covariate_df.columns:
+#                 self.covariate_df[col] = self.covariate_df[col].astype(int)
+        
+#         # Chuẩn hóa các cột số
+#         numeric_cols = self.covariate_df.select_dtypes(include=[np.number]).columns
+#         for col in numeric_cols:
+#             if col not in ['Promo', 'Open', 'SchoolHoliday']:
+#                 mean = self.covariate_df[col].mean()
+#                 std = self.covariate_df[col].std()
+#                 if std != 0:
+#                     self.covariate_df[col] = (self.covariate_df[col] - mean) / std
+        
+#         # Chuyển đổi tất cả các cột sang float64
+#         self.covariate_df = self.covariate_df.astype(np.float64)
+        
+#         print("\nCác cột sau khi xử lý:", self.covariate_df.columns.tolist())
+#         print(f"Số lượng features: {self.covariate_df.shape[1]}")
+#         print(f"self.covariate_df.shape[0] : {self.covariate_df.shape[0]}")
+#     def __len__(self):
+#         # The number of items is the number of possible sequences
+#         return self.seq_len
 
-    # Chuẩn hóa các feature số
-    numeric_features = ['CompetitionDistance', 'CompetitionOpenSinceMonth', 
-                       'CompetitionOpenSinceYear', 'Promo2SinceWeek', 'Promo2SinceYear']
+#     def __getitem__(self, idx):
+#         print(f"\n=== Xử lý item {idx} ===")
+        
+#         # Kiểm tra index hợp lệ
+#         if idx < 0 or idx >= self.seq_len:
+#             raise IndexError(f"Index {idx} nằm ngoài phạm vi [0, {self.seq_len-1}]")
+        
+#         # Lấy chuỗi thời gian hiện tại (input cho encoder)
+#         cur_series = self.series_df.iloc[idx:idx+self.context_size, 0].values.astype(np.float64)
+        
+#         # Lấy covariates cho encoder
+#         cur_covariate = self.covariate_df.iloc[idx:idx+self.context_size, :].values.astype(np.float64)
+        
+#         # Lấy covariates cho decoder (tương lai)
+#         next_covariate = self.covariate_df.iloc[idx+self.context_size:idx+self.context_size+self.horizon_size, :].values.astype(np.float64)
+#         next_covariate_tensor = torch.tensor(next_covariate, dtype=torch.float64)  # [horizon_size, num_features]
+        
+#         # Lấy giá trị thực tế cho tương lai (target)
+#         real_vals = self.series_df.iloc[idx+self.context_size:idx+self.context_size+self.horizon_size, 0].values.astype(np.float64)
+        
+#         # Chuyển đổi sang tensor
+#         cur_series_tensor = torch.tensor(cur_series, dtype=torch.float64).unsqueeze(1)  # [context_size, 1]
+#         cur_covariate_tensor = torch.tensor(cur_covariate, dtype=torch.float64)  # [context_size, num_features]
+        
+#         # Ghép series và covariates cho encoder
+#         cur_series_covariate_tensor = torch.cat([cur_series_tensor, cur_covariate_tensor], dim=1)  # [context_size, 1+num_features]
+        
+#         cur_real_vals_tensor = torch.tensor(real_vals, dtype=torch.float64)  # [horizon_size]
+        
+#         return cur_series_covariate_tensor, next_covariate_tensor, cur_real_vals_tensor
 
-    for feature in numeric_features:
-        mean = train[feature].mean()
-        std = train[feature].std()
-        train[feature] = (train[feature] - mean) / std
-        test[feature] = (test[feature] - mean) / std
-
-    # One-hot encoding cho categorical variables
-    categorical_cols = ['StoreType', 'Assortment', 'StateHoliday']
-    train = pd.get_dummies(train, columns=categorical_cols)
-    test = pd.get_dummies(test, columns=categorical_cols)
-
-    return train, test
 
 def create_mqrnn_dataset(df, target_col='Sales', covariate_cols=None):
     """
@@ -210,147 +208,79 @@ def create_mqrnn_dataset(df, target_col='Sales', covariate_cols=None):
     """
     if covariate_cols is None:
         covariate_cols = ['Year', 'Month', 'Day', 'DayOfWeek', 'WeekOfYear',
-                         'CompetitionDistance', 'CompetitionOpenSinceMonth',
-                         'CompetitionOpenSinceYear', 'Promo2SinceWeek', 'Promo2SinceYear',
+            'CompetitionDistance', 'CompetitionOpenSinceMonth',
+            'CompetitionOpenSinceYear', 'Promo2SinceWeek', 'Promo2SinceYear',
             'Promo', 'StateHoliday', 'SchoolHoliday', 'Open', 'SalePerCustomer']
-    
+
     # Tách target và covariates
     target_df = df[[target_col]]
     covariate_df = df[covariate_cols]
-    
+
     # Đảm bảo index là Date và được sắp xếp
     target_df = target_df.sort_index()
     covariate_df = covariate_df.sort_index()
-    
+
     return target_df, covariate_df
 
-def prepare_data_for_training(train, test, config):
+def preprocess_full_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Chuẩn bị dữ liệu cho training với:
-    - Training data: 1/1/2013 - 31/7/2015
-    - Prediction period: 1/8/2015 - 17/9/2015 (45 ngày)
+    Tiền xử lý toàn bộ DataFrame: categorical, one-hot, boolean, chỉ chuẩn hóa các cột continuous.
+    Trả về DataFrame đã xử lý, chỉ gồm các cột số sẵn sàng cho model.
     """
-    # Lọc dữ liệu theo thời gian
-    train_start = '2013-01-01'
-    train_end = '2015-07-31'
-    test_start = '2015-08-01'
-    test_end = '2015-09-17'
-    
-    train = train[(train['Date'] >= train_start) & (train['Date'] <= train_end)]
-    test = test[(test['Date'] >= test_start) & (test['Date'] <= test_end)]
+    df = df.copy()
 
-    # Chuẩn hóa Sales theo từng store
-    train['Sales'] = train.groupby('Store')['Sales'].transform(
-        lambda x: (x - x.mean()) / x.std()
-    )
+    # Xử lý StoreType
+    if 'StoreType' in df.columns:
+        store_type_map = {'a': 0, 'b': 1, 'c': 2, 'd': 3}
+        df['StoreType'] = df['StoreType'].map(store_type_map)
+        store_type_dummies = pd.get_dummies(df['StoreType'], prefix='StoreType')
+        df = pd.concat([df.drop('StoreType', axis=1), store_type_dummies], axis=1)
 
-    # Tạo dataset cho MQRNN
-    train_target, train_covariates = create_mqrnn_dataset(train)
-    test_target, test_covariates = create_mqrnn_dataset(test)
+    # Xử lý Assortment
+    if 'Assortment' in df.columns:
+        assortment_map = {'a': 0, 'b': 1, 'c': 2}
+        df['Assortment'] = df['Assortment'].map(assortment_map)
+        assortment_dummies = pd.get_dummies(df['Assortment'], prefix='Assortment')
+        df = pd.concat([df.drop('Assortment', axis=1), assortment_dummies], axis=1)
 
-    # Tách dữ liệu thành input và target
-    input_window = config.get('input_window', 90)  # Tăng input window lên 90 ngày để nắm bắt pattern dài hạn
-    output_window = config.get('output_window', 45)  # 45 ngày dự đoán
-    
-    # Tạo input và target sequences
-    X = []
-    y = []
-    for i in range(len(train_target) - input_window - output_window + 1):
-        # Lấy input sequence cho mỗi store
-        input_seq = train_target[i:i+input_window]  # [input_window, num_stores]
-        # Lấy target sequence cho mỗi store
-        target_seq = train_target[i+input_window:i+input_window+output_window]  # [output_window, num_stores]
-        
-        X.append(input_seq)
-        y.append(target_seq)
-    
-    X = np.array(X)  # [num_samples, input_window, num_stores]
-    y = np.array(y)  # [num_samples, output_window, num_stores]
+    # Xử lý PromoInterval
+    if 'PromoInterval' in df.columns:
+        promo_interval_map = {
+            'Jan,Apr,Jul,Oct': 0,
+            'Feb,May,Aug,Nov': 1,
+            'Mar,Jun,Sept,Dec': 2
+        }
+        df['PromoInterval'] = df['PromoInterval'].map(promo_interval_map)
+        promo_interval_dummies = pd.get_dummies(df['PromoInterval'], prefix='PromoInterval')
+        df = pd.concat([df.drop('PromoInterval', axis=1), promo_interval_dummies], axis=1)
 
-    # In ra shape và thông tin để debug
-    print("Training period:", train_start, "to", train_end)
-    print("Prediction period:", test_start, "to", test_end)
-    print("X shape:", X.shape)
-    print("y shape:", y.shape)
-    print("train_covariates shape:", train_covariates.shape)
-    print("Number of samples:", len(X))
-    print("Input window size:", input_window)
-    print("Output window size:", output_window)
+    # Xử lý StateHoliday
+    if 'StateHoliday' in df.columns:
+        state_holiday_map = {'0': 0, 'a': 1, 'b': 2, 'c': 3, 'd': 4}
+        df['StateHoliday'] = df['StateHoliday'].map(state_holiday_map)
+        state_holiday_dummies = pd.get_dummies(df['StateHoliday'], prefix='StateHoliday')
+        df = pd.concat([df.drop('StateHoliday', axis=1), state_holiday_dummies], axis=1)
 
-    # Tạo MQRNN dataset
-    full_dataset = MQRNN_Dataset(
-        df=train,  # DataFrame với cấu trúc: Date, Store, DayOfWeek, Sales, Customers, Open, Promo, StateHoliday, SchoolHoliday
-        input_window=input_window,
-        output_window=output_window
-    )
+    # Xử lý các cột boolean
+    boolean_cols = ['Promo', 'Open', 'SchoolHoliday']
+    for col in boolean_cols:
+        if col in df.columns:
+            df[col] = df[col].astype(int)
 
-    # Chia dataset thành train và validation (80-20 split)
-    train_size = int(0.8 * len(full_dataset))
-    val_size = len(full_dataset) - train_size
-    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+    # Chỉ chuẩn hóa các cột continuous
+    continuous_cols = [
+        'Sales', 'Customers', 'SalePerCustomer', 'CompetitionDistance',
+        'CompetitionOpenSinceMonth', 'CompetitionOpenSinceYear',
+        'Promo2SinceWeek', 'Promo2SinceYear'
+    ]
+    for col in continuous_cols:
+        if col in df.columns:
+            mean = df[col].mean()
+            std = df[col].std()
+            if std != 0:
+                df[col] = (df[col] - mean) / std
 
-    # Tạo dataloaders
-    train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=config['batch_size'])
+    # Đảm bảo tất cả các cột là float32
+    df = df.astype(np.float32)
 
-    return train_loader, val_loader, test_target, test_covariates
-
-def get_feature_names():
-    """
-    Trả về danh sách tên các features
-    """
-    return ['Year', 'Month', 'Day', 'DayOfWeek', 'WeekOfYear',
-            'CompetitionDistance', 'CompetitionOpenSinceMonth',
-            'CompetitionOpenSinceYear', 'Promo2SinceWeek', 'Promo2SinceYear',
-            'Promo', 'StateHoliday', 'SchoolHoliday', 'Open']
-
-def remove_outliers(df, column, n_std=3):
-    mean = df[column].mean()
-    std = df[column].std()
-    df = df[abs(df[column] - mean) <= (n_std * std)]
     return df
-
-def prepare_data_for_mqrnn(df, target_col='Sales', covariate_cols=None):
-    """
-    Chuẩn bị dữ liệu cho MQRNN
-    
-    Parameters:
-    -----------
-    df: DataFrame
-        DataFrame chứa dữ liệu
-    target_col: str
-        Tên cột chứa giá trị target (Sales)
-    covariate_cols: list
-        Danh sách các cột làm covariates
-    """
-    # Tạo dataset
-    dataset = MQRNN_Dataset(df, target_col=target_col, covariate_cols=covariate_cols)
-    
-    # Tạo dataloader
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
-    
-    return dataset, dataloader
-
-# Ví dụ sử dụng
-if __name__ == "__main__":
-    # Đọc dữ liệu
-    df = pd.read_csv('data.csv', parse_dates=['Date'])
-    df.set_index('Date', inplace=True)
-    
-    # Chỉ định các cột covariates
-    covariate_cols = ['DayOfWeek', 'Customers', 'Open', 'Promo', 
-                      'StateHoliday', 'SchoolHoliday']
-    
-    # Chuẩn bị dữ liệu
-    dataset, dataloader = prepare_data_for_mqrnn(df, target_col='Sales', 
-                                               covariate_cols=covariate_cols)
-    
-    # Kiểm tra một batch
-    for batch in dataloader:
-        input_covariates, future_covariates, target = batch
-        print("Input covariates shape:", input_covariates.shape)
-        print("Future covariates shape:", future_covariates.shape)
-        print("Target shape:", target.shape)
-        break
-
-

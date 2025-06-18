@@ -76,19 +76,6 @@ class MQRNN(object):
                 device=self.device)
         print("training finished")
     
-    def _calc_loss(self, predictions, target):
-        """
-        Tính quantile loss
-        """
-        total_loss = torch.tensor([0.0], device=self.device)
-        for i in range(self.quantile_size):
-            p = self.quantiles[i]
-            errors = target - predictions[:,:,:,i]
-            cur_loss = torch.max((p-1)*errors, p*errors)
-            total_loss += torch.sum(cur_loss)
-            
-        return total_loss
-    
     def predict(self, train_target_df, train_covariate_df, test_covariate_df, col_name):
         """
         Make predictions for a given column
@@ -111,11 +98,15 @@ class MQRNN(object):
             input_target_covariate_tensor = torch.cat([input_target_tensor, full_covariate_tensor], dim=1)
             input_target_covariate_tensor = input_target_covariate_tensor.unsqueeze(0)  # [1, seq_len, feature]
             # Nếu encoder dùng batch_first=True, không cần permute
+            print(f"input_target_covariate_tensor shape: {input_target_covariate_tensor.shape}")
             outputs = self.encoder(input_target_covariate_tensor)  # [1, seq_len, hidden_size]
             enc_hs_flat = outputs.reshape(1, -1)  # [1, seq_len * hidden_size]
             next_covariate_flat = next_covariate_tensor.reshape(1, -1)  # [1, horizon_size * covariate_size]
+            print(f"enc_hs_flat shape: {enc_hs_flat.shape}")
+            print(f"next_covariate_flat shape: {next_covariate_flat.shape}")
             gdecoder_input = torch.cat([enc_hs_flat, next_covariate_flat], dim=1)  # [1, ...]
             gdecoder_output = self.gdecoder(gdecoder_input)
+            print(f"gdecoder_output shape: {gdecoder_output.shape}")
             local_decoder_input = torch.cat([gdecoder_output, next_covariate_flat], dim=1)
             local_decoder_output = self.ldecoder(local_decoder_input)
             local_decoder_output = local_decoder_output.view(self.horizon_size, self.quantile_size)
