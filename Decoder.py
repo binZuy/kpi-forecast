@@ -30,7 +30,16 @@ class GlobalDecoder(nn.Module):
         self.linear3 = nn.Linear(in_features= horizon_size*hidden_size*2, 
                                 out_features= (horizon_size+1)*context_size)
 
-        self.activation = nn.ReLU()
+        self.activation = nn.LeakyReLU(0.1)
+        
+        self._init_weights()
+        
+    def _init_weights(self):
+        for module in [self.linear1, self.linear2, self.linear3]:
+            torch.nn.init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        
     def forward(self, input):
         # x: [batch_size, feature]
         layer1_output = self.linear1(input)
@@ -69,7 +78,15 @@ class LocalDecoder(nn.Module):
                                  out_features= horizon_size* context_size)
         self.linear2 = nn.Linear(in_features= horizon_size* context_size,
                                  out_features= horizon_size* quantile_size)
-        self.activation = nn.ReLU()
+        self.activation = nn.LeakyReLU(0.1)
+        
+        self._init_weights()
+        
+    def _init_weights(self):
+        for module in [self.linear1, self.linear2]:
+            torch.nn.init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
     
     def forward(self,input):
         layer1_output = self.linear1(input)
