@@ -38,7 +38,7 @@ def calc_loss(cur_series_covariate_tensor : torch.Tensor,
     horizon_size = encoder.horizon_size
     total_loss = torch.tensor([0.0],device=device)
 
-    local_decoder_input = torch.cat([gdecoder_output, next_covariate_tensor], dim=2) #[seq_len, batch_size,(horizon_size+1)*context_size + covariate_size * horizon_size]
+    local_decoder_input = torch.cat([gdecoder_output, next_covariate_tensor], dim=1) #[seq_len, batch_size,(horizon_size+1)*context_size + covariate_size * horizon_size]
     local_decoder_output = ldecoder( local_decoder_input) #[seq_len, batch_size, horizon_size* quantile_size]
     seq_len = local_decoder_output.shape[0]
     batch_size = local_decoder_output.shape[1]
