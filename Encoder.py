@@ -40,18 +40,18 @@ class Encoder(nn.Module):
 
     def forward(self, input):
         """
-        For the RNN(LSTM), the input shape is [seq_len,batch_size,input_size]
-        where input_size = covariate_size +1
+        For the RNN(LSTM), the input shape is [batch_size, seq_len, input_size]
+        where input_size = covariate_size + 1
         """
-        seq_len = input.shape[0]
-        batch_size = input.shape[1]
+        batch_size = input.shape[0]
+        seq_len = input.shape[1]
         input_size = input.shape[2]
         layer_size = self.layer_size
-        direction_size =1
+        direction_size = 1
         if self.by_direction:
             direction_size = 2
-        outputs,_ = self.LSTM(input)
-        outputs_reshape = outputs.view(seq_len,batch_size,direction_size,self.hidden_size)
-        outputs_last_layer = outputs_reshape[:,:,-1,:]
-        final_outputs = outputs_last_layer.view(seq_len,batch_size,self.hidden_size)
+        outputs, _ = self.LSTM(input)  # [batch_size, seq_len, hidden_size * direction_size]
+        outputs_reshape = outputs.view(batch_size, seq_len, direction_size, self.hidden_size)
+        outputs_last_layer = outputs_reshape[:, :, -1, :]  # Lấy layer cuối cùng
+        final_outputs = outputs_last_layer.view(batch_size, seq_len, self.hidden_size)
         return final_outputs
